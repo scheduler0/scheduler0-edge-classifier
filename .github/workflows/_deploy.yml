@@ -1,0 +1,176 @@
+name: Deploy Intent Classifier (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub environment (production or staging)"
+        required: true
+        type: string
+      env_name:
+        description: "Short environment name used to derive resource names (staging or production)"
+        required: true
+        type: string
+      doppler_config:
+        description: "Doppler config name (e.g. stg_scheduler0_app)"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy Intent Classifier
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ENV_NAME: ${{ inputs.env_name }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Derive ECS resource names
+      run: |
+        set -euo pipefail
+        echo "ECR_REPOSITORY=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
+        echo "ECS_CLUSTER=${ENV_NAME}_scheduler0_ecs_cluster"                                         >> "$GITHUB_ENV"
+        echo "ECS_SERVICE=${ENV_NAME}_scheduler0-intent-classifier-service"                           >> "$GITHUB_ENV"
+        echo "ECS_TASK_DEFINITION=${ENV_NAME}-scheduler0-intent-classifier-ecs-task-definition.json"  >> "$GITHUB_ENV"
+        echo "CONTAINER_NAME=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Install Doppler CLI
+      uses: dopplerhq/cli-action@v3
+      with:
+        doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+        IMAGE_URI_LATEST="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+        docker build -t "${IMAGE_URI}" -t "${IMAGE_URI_LATEST}" .
+        docker push "${IMAGE_URI}"
+        docker push "${IMAGE_URI_LATEST}"
+
+        echo "image=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ env.ECS_TASK_DEFINITION }}
+        container-name: ${{ env.CONTAINER_NAME }}
+        image: ${{ steps.build-image.outputs.image }}
+        environment-variables: |
+          ENV=${{ inputs.env_name }}
+
+    - name: Register task definition
+      id: register-task-def
+      run: |
+        TASK_DEF_ARN=$(aws ecs register-task-definition \
+          --cli-input-json file://${{ steps.task-def.outputs.task-definition }} \
+          --region ${{ env.AWS_REGION }} \
+          --query 'taskDefinition.taskDefinitionArn' \
+          --output text)
+        echo "TASK_DEF_ARN=${TASK_DEF_ARN}" >> "$GITHUB_ENV"
+        echo "Task definition registered: ${TASK_DEF_ARN}"
+
+    - name: Deploy to ECS
+      run: |
+        set -euo pipefail
+
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE }} \
+          --task-definition ${{ env.TASK_DEF_ARN }} \
+          --region ${{ env.AWS_REGION }} \
+          --query 'service.{ServiceName:serviceName,Status:status,TaskDefinition:taskDefinition}' \
+          --output table
+
+        echo "Waiting for service to stabilize..."
+        aws ecs wait services-stable \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --services ${{ env.ECS_SERVICE }} \
+          --region ${{ env.AWS_REGION }} || {
+            echo "=== DEPLOYMENT FAILED ==="
+            aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'services[0].{Status:status,Events:events[0:5]}' \
+              --output json
+            exit 1
+          }
+
+        echo "Deployment completed successfully"
+
+    - name: Check ECS service status
+      run: |
+        aws ecs describe-services \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --services ${{ env.ECS_SERVICE }} \
+          --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount,PendingCount:pendingCount}' \
+          --output table
+
+        aws ecs describe-services \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --services ${{ env.ECS_SERVICE }} \
+          --query 'services[0].deployments[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount,PendingCount:pendingCount}' \
+          --output table
+
+    - name: Pre-deployment cleanup (if needed)
+      run: |
+        STUCK_DEPLOYMENTS=$(aws ecs describe-services \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --services ${{ env.ECS_SERVICE }} \
+          --query 'services[0].deployments[?status==`FAILED`].id' \
+          --output text)
+
+        if [ -n "$STUCK_DEPLOYMENTS" ]; then
+          echo "Found failed deployments, attempting to force new deployment..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment
+
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
+        fi
+
+    - name: Deployment troubleshooting info
+      if: always()
+      run: |
+        echo "=== DEPLOYMENT TROUBLESHOOTING INFO ==="
+        echo "1. Force new deployment:"
+        echo "   aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment"
+        echo "2. Check service events:"
+        echo "   aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].events[0:5]'"
+        echo "3. Check bootstrap log on EC2 instance:"
+        echo "   tail -f /var/log/scheduler0-intent-classifier-bootstrap.log"
+        echo "4. Verify bootstrap marker exists:"
+        echo "   cat /var/lib/scheduler0-intent-classifier/bootstrap-complete"
+        echo "5. Verify Duckling binary:"
+        echo "   /opt/duckling/duckling-example-exe --help"
+        echo "======================================"

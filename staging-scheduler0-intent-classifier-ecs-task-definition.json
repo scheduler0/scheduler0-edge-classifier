@@ -1,0 +1,98 @@
+{
+    "containerDefinitions": [
+        {
+            "name": "staging-scheduler0-intent-classifier",
+            "image": "748201447723.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:latest",
+            "cpu": 1024,
+            "memory": 2048,
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "ENV",
+                    "value": "staging"
+                }
+            ],
+            "mountPoints": [
+                {
+                    "sourceVolume": "duckling-bin",
+                    "containerPath": "/duckling",
+                    "readOnly": true
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "ecs/staging-scheduler0-intent-classifier-ecs-service",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:8080/healthz || exit 1"],
+                "interval": 30,
+                "timeout": 10,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": []
+        }
+    ],
+    "family": "staging_scheduler0-intent-classifier",
+    "networkMode": "awsvpc",
+    "volumes": [
+        {
+            "name": "duckling-bin",
+            "host": {
+                "sourcePath": "/opt/duckling"
+            }
+        }
+    ],
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "ecs.capability.container-health-check"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "placementConstraints": [
+        {
+            "type": "memberOf",
+            "expression": "attribute:scheduler0.intent-classifier == true"
+        }
+    ],
+    "compatibilities": [
+        "EC2"
+    ],
+    "requiresCompatibilities": [
+        "EC2"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "executionRoleArn": "arn:aws:iam::748201447723:role/staging_scheduler0_ecs_task_execution_role",
+    "taskRoleArn": "arn:aws:iam::748201447723:role/staging_scheduler0_ecs_task_execution_role"
+}

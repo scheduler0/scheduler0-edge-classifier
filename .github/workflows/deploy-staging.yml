@@ -1,0 +1,19 @@
+name: Deploy Intent Classifier to Amazon ECS (staging)
+
+on:
+  push:
+    branches: ["staging"]
+  workflow_dispatch:
+
+concurrency:
+  group: intent-classifier-deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      environment: staging
+      env_name: staging
+      doppler_config: stg_scheduler0_app
+    secrets: inherit
