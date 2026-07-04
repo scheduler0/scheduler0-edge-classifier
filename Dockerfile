@@ -6,7 +6,6 @@ RUN dnf install -y \
       python3 \
       python3-devel \
       gcc \
-      curl \
     && dnf clean all \
     && python3 -m ensurepip --upgrade \
     && python3 -m pip install --upgrade pip --no-cache-dir
