@@ -62,6 +62,7 @@ sudo "$PM" install -y \
   bzip2-devel \
   sqlite-devel \
   pcre-devel \
+  pkgconfig \
   perl \
   tar \
   xz \
