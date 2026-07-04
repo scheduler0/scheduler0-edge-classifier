@@ -2,10 +2,7 @@
 # /opt/duckling at runtime) is guaranteed to be compatible with the container's glibc.
 FROM amazonlinux:2023
 
-RUN dnf install -y \
-      python3 \
-      python3-devel \
-      gcc \
+RUN dnf install -y python3 \
     && dnf clean all \
     && python3 -m ensurepip --upgrade \
     && python3 -m pip install --upgrade pip --no-cache-dir
