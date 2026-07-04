@@ -4,16 +4,17 @@ FROM amazonlinux:2023
 
 RUN dnf install -y \
       python3 \
-      python3-pip \
       python3-devel \
       gcc \
       curl \
-    && dnf clean all
+    && dnf clean all \
+    && python3 -m ensurepip --upgrade \
+    && python3 -m pip install --upgrade pip --no-cache-dir
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt \
+RUN python3 -m pip install --no-cache-dir -r requirements.txt \
     && python3 -m spacy download en_core_web_sm
 
 COPY intent.py app.py start.sh ./
