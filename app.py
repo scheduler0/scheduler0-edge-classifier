@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import requests
@@ -6,7 +8,10 @@ from intent import classify, nlp
 
 app = FastAPI(title="scheduler0-intent-classifier", version="1.0.0")
 
-DUCKLING_URL = "http://127.0.0.1:8000/parse"
+# Duckling runs on the EC2 host; start.sh exports DUCKLING_URL with the
+# host private IP so the container can reach it.  Falls back to localhost for
+# local development.
+DUCKLING_URL = os.environ.get("DUCKLING_URL", "http://127.0.0.1:8000/parse")
 
 
 class ClassifyRequest(BaseModel):
