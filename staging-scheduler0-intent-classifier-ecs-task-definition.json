@@ -23,6 +23,11 @@
                     "sourceVolume": "duckling-bin",
                     "containerPath": "/duckling",
                     "readOnly": true
+                },
+                {
+                    "sourceVolume": "nlp-venv",
+                    "containerPath": "/opt/scheduler0-nlp",
+                    "readOnly": true
                 }
             ],
             "logConfiguration": {
@@ -50,6 +55,12 @@
             "name": "duckling-bin",
             "host": {
                 "sourcePath": "/opt/duckling"
+            }
+        },
+        {
+            "name": "nlp-venv",
+            "host": {
+                "sourcePath": "/opt/scheduler0-nlp"
             }
         }
     ],

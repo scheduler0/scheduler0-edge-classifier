@@ -38,4 +38,4 @@ done
 echo "==> Duckling ready after ${ELAPSED}s"
 
 echo "==> Starting Uvicorn"
-exec uvicorn app:app --host 0.0.0.0 --port 8080
+exec /opt/scheduler0-nlp/bin/uvicorn app:app --host 0.0.0.0 --port 8080

@@ -9,7 +9,7 @@
 #
 # Environment variables (all have defaults):
 #   DUCKLING_DIR  – where to clone/build Duckling  (default: $HOME/workspace/duckling)
-#   NLP_DIR       – Python virtualenv root          (default: $HOME/scheduler0-nlp)
+#   NLP_DIR       – Python virtualenv root          (default: /opt/scheduler0-nlp)
 #   DUCKLING_PORT – Duckling HTTP port              (default: 8000)
 #   DUCKLING_EXPORT_DIR – where to copy the binary and libs for ECS mounting
 #                                                   (default: /opt/duckling)
@@ -27,7 +27,7 @@ for arg in "$@"; do
 done
 
 DUCKLING_DIR="${DUCKLING_DIR:-$HOME/workspace/duckling}"
-NLP_DIR="${NLP_DIR:-$HOME/scheduler0-nlp}"
+NLP_DIR="${NLP_DIR:-/opt/scheduler0-nlp}"
 DUCKLING_PORT="${DUCKLING_PORT:-8000}"
 DUCKLING_EXPORT_DIR="${DUCKLING_EXPORT_DIR:-/opt/duckling}"
 LOG_FILE="${LOG_FILE:-/var/log/scheduler0-intent-classifier-bootstrap.log}"
@@ -108,7 +108,7 @@ python3 -m venv "$NLP_DIR"
 echo "==> Installing Python NLP dependencies"
 source "$NLP_DIR/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install requests spacy
+python -m pip install fastapi 'uvicorn[standard]' requests 'spacy>=3.7.0,<3.8.0'
 python -m spacy download en_core_web_sm
 
 mkdir -p "$NLP_DIR/app"
