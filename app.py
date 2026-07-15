@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import FastAPI, HTTPException
@@ -5,6 +6,13 @@ from pydantic import BaseModel
 import requests
 
 from intent import classify, nlp
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("intent_classifier")
 
 app = FastAPI(title="scheduler0-intent-classifier", version="1.0.0")
 
@@ -23,6 +31,7 @@ def healthz():
     try:
         nlp("test")
     except Exception as e:
+        logger.warning("healthz: spaCy unavailable: %s", e)
         raise HTTPException(status_code=503, detail=f"spaCy unavailable: {e}")
 
     try:
@@ -33,6 +42,7 @@ def healthz():
         )
         r.raise_for_status()
     except Exception as e:
+        logger.error("healthz: Duckling unreachable: %s", e)
         raise HTTPException(status_code=503, detail=f"Duckling unreachable: {e}")
 
     return {"status": "ok"}
@@ -43,4 +53,5 @@ def classify_intent(req: ClassifyRequest):
     try:
         return classify(req.text)
     except Exception as e:
+        logger.exception("intent classify failed (text_len=%d)", len(req.text))
         raise HTTPException(status_code=500, detail=str(e))
