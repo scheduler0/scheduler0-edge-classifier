@@ -1,9 +1,12 @@
 import json
+import os
 import re
 import requests
 import spacy
 
-DUCKLING_URL = "http://127.0.0.1:8000/parse"
+# Duckling runs on the EC2 host, not in this container; start.sh exports
+# DUCKLING_URL with the host private IP. Fall back to localhost for local dev.
+DUCKLING_URL = os.environ.get("DUCKLING_URL", "http://127.0.0.1:8000/parse")
 nlp = spacy.load("en_core_web_sm")
 
 
