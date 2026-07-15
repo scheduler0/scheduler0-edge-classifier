@@ -9,7 +9,7 @@
 #
 # Environment variables (all have defaults):
 #   DUCKLING_DIR  – where to clone/build Duckling  (default: $HOME/workspace/duckling)
-#   NLP_DIR       – Python virtualenv root          (default: $HOME/scheduler0-nlp)
+#   NLP_DIR       – Python virtualenv root          (default: /opt/scheduler0-nlp)
 #   DUCKLING_PORT – Duckling HTTP port              (default: 8000)
 #   DUCKLING_EXPORT_DIR – where to copy the binary and libs for ECS mounting
 #                                                   (default: /opt/duckling)
@@ -17,6 +17,9 @@
 #   BOOTSTRAP_MARKER – file written on success      (default: /var/lib/scheduler0-intent-classifier/bootstrap-complete)
 
 set -Eeuo pipefail
+# HOME is not set in the EC2 user-data environment; default to /root so the
+# ${HOME:-...} expansions below don't trip the -u (nounset) flag.
+export HOME="${HOME:-/root}"
 
 CI_MODE=false
 for arg in "$@"; do
@@ -24,7 +27,7 @@ for arg in "$@"; do
 done
 
 DUCKLING_DIR="${DUCKLING_DIR:-$HOME/workspace/duckling}"
-NLP_DIR="${NLP_DIR:-$HOME/scheduler0-nlp}"
+NLP_DIR="${NLP_DIR:-/opt/scheduler0-nlp}"
 DUCKLING_PORT="${DUCKLING_PORT:-8000}"
 DUCKLING_EXPORT_DIR="${DUCKLING_EXPORT_DIR:-/opt/duckling}"
 LOG_FILE="${LOG_FILE:-/var/log/scheduler0-intent-classifier-bootstrap.log}"
@@ -58,6 +61,8 @@ sudo "$PM" install -y \
   readline-devel \
   bzip2-devel \
   sqlite-devel \
+  pcre-devel \
+  pkgconfig \
   perl \
   tar \
   xz \
@@ -65,12 +70,15 @@ sudo "$PM" install -y \
   gcc \
   gcc-c++ \
   git \
-  curl \
   wget \
   which \
   python3 \
-  python3-devel \
-  python3-pip
+  python3-devel
+# curl-minimal is pre-installed on Amazon Linux 2023 EC2 and conflicts with the
+# full curl package; skip it — curl-minimal provides the curl command we need.
+# python3-pip is not reliably in the AL2023 dnf repos; bootstrap via ensurepip.
+python3 -m ensurepip --upgrade
+python3 -m pip install --upgrade pip --no-cache-dir
 
 echo "==> Installing Haskell Stack if missing"
 if ! command -v stack >/dev/null 2>&1; then
@@ -100,7 +108,7 @@ python3 -m venv "$NLP_DIR"
 echo "==> Installing Python NLP dependencies"
 source "$NLP_DIR/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install requests spacy
+python -m pip install fastapi 'uvicorn[standard]' requests 'spacy>=3.7.0,<3.8.0'
 python -m spacy download en_core_web_sm
 
 mkdir -p "$NLP_DIR/app"

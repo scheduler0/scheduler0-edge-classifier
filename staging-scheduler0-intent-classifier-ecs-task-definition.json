@@ -23,6 +23,11 @@
                     "sourceVolume": "duckling-bin",
                     "containerPath": "/duckling",
                     "readOnly": true
+                },
+                {
+                    "sourceVolume": "nlp-venv",
+                    "containerPath": "/opt/scheduler0-nlp",
+                    "readOnly": true
                 }
             ],
             "logConfiguration": {
@@ -38,7 +43,7 @@
                 "interval": 30,
                 "timeout": 10,
                 "retries": 3,
-                "startPeriod": 60
+                "startPeriod": 300
             },
             "systemControls": []
         }
@@ -51,32 +56,12 @@
             "host": {
                 "sourcePath": "/opt/duckling"
             }
-        }
-    ],
-    "requiresAttributes": [
-        {
-            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
         },
         {
-            "name": "ecs.capability.execution-role-awslogs"
-        },
-        {
-            "name": "com.amazonaws.ecs.capability.ecr-auth"
-        },
-        {
-            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
-        },
-        {
-            "name": "ecs.capability.container-health-check"
-        },
-        {
-            "name": "ecs.capability.execution-role-ecr-pull"
-        },
-        {
-            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
-        },
-        {
-            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+            "name": "nlp-venv",
+            "host": {
+                "sourcePath": "/opt/scheduler0-nlp"
+            }
         }
     ],
     "placementConstraints": [
@@ -84,9 +69,6 @@
             "type": "memberOf",
             "expression": "attribute:scheduler0.intent-classifier == true"
         }
-    ],
-    "compatibilities": [
-        "EC2"
     ],
     "requiresCompatibilities": [
         "EC2"

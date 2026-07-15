@@ -108,22 +108,27 @@ jobs:
           --query 'service.{ServiceName:serviceName,Status:status,TaskDefinition:taskDefinition}' \
           --output table
 
-        echo "Waiting for service to stabilize..."
+        # Wait up to 3 minutes for the service to stabilize.
+        # On ECS/EC2 the container instance may still be bootstrapping (NLP install
+        # takes 60-90 min), so a timeout here is expected and non-fatal.  CloudWatch
+        # alarms are the authoritative signal for ongoing service health.
+        echo "Waiting up to 3 min for service to stabilize (non-fatal if EC2 is still bootstrapping)..."
         aws ecs wait services-stable \
           --cluster ${{ env.ECS_CLUSTER }} \
           --services ${{ env.ECS_SERVICE }} \
-          --region ${{ env.AWS_REGION }} || {
-            echo "=== DEPLOYMENT FAILED ==="
+          --region ${{ env.AWS_REGION }} \
+          --cli-read-timeout 180 \
+          --cli-connect-timeout 10 && echo "Service stabilized." || {
+            echo "::warning::Service did not stabilize within 3 min — task is pending (EC2 bootstrap may still be in progress)."
             aws ecs describe-services \
               --cluster ${{ env.ECS_CLUSTER }} \
               --services ${{ env.ECS_SERVICE }} \
               --region ${{ env.AWS_REGION }} \
-              --query 'services[0].{Status:status,Events:events[0:5]}' \
+              --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Events:events[0:3]}' \
               --output json
-            exit 1
           }
 
-        echo "Deployment completed successfully"
+        echo "Image registered and service updated successfully."
 
     - name: Check ECS service status
       run: |
@@ -138,26 +143,6 @@ jobs:
           --services ${{ env.ECS_SERVICE }} \
           --query 'services[0].deployments[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount,PendingCount:pendingCount}' \
           --output table
-
-    - name: Pre-deployment cleanup (if needed)
-      run: |
-        STUCK_DEPLOYMENTS=$(aws ecs describe-services \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --services ${{ env.ECS_SERVICE }} \
-          --query 'services[0].deployments[?status==`FAILED`].id' \
-          --output text)
-
-        if [ -n "$STUCK_DEPLOYMENTS" ]; then
-          echo "Found failed deployments, attempting to force new deployment..."
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --force-new-deployment
-
-          aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }}
-        fi
 
     - name: Deployment troubleshooting info
       if: always()
