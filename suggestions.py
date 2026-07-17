@@ -1140,7 +1140,6 @@ def analyze(request):
         "engine": {
             "engine_version": ENGINE_VERSION,
             "rule_set_version": RULE_SET_VERSION,
-            "spacy_model": SPACY_MODEL,
         },
     }
 
