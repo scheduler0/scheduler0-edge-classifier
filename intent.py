@@ -11,7 +11,7 @@ nlp = spacy.load("en_core_web_sm")
 
 
 REQUEST_STARTERS = re.compile(
-    r"^\s*(please|can you|could you|would you|will you|i need you to|i want you to|help me|set up|create|schedule)\b",
+    r"^\s*(please|can you|could you|would you|will you|i need you to|i want you to|help me|set up|create|schedule|email|what about)\b",
     re.I,
 )
 
@@ -21,7 +21,7 @@ QUESTION_REQUEST = re.compile(
 )
 
 INFO_QUESTION = re.compile(
-    r"^\s*(what|why|how|when|where|who|which)\b",
+    r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
 )
 
@@ -34,6 +34,13 @@ RECURRENCE_PATTERN = re.compile(
 
 NEGATION_PATTERN = re.compile(
     r"\b(don't|do not|dont|never|stop|cancel|remove)\b",
+    re.I,
+)
+
+# "don't forget to X" is a double negation meaning "please remember to X"
+# and should not be treated as negating the scheduling intent.
+FORGET_NEGATION = re.compile(
+    r"\b(don'?t|do\s+not|dont)\s+forget\b",
     re.I,
 )
 
@@ -96,6 +103,7 @@ def looks_like_request(doc, text):
 
     # "Please notify me tomorrow"
     # "I need you to remind me tomorrow"
+    # "What about scheduling our weekly sync every Monday?"
     if REQUEST_STARTERS.search(text):
         return True
 
@@ -134,10 +142,16 @@ def looks_like_info_question(text):
 
 
 def has_negation(text, doc):
-    if NEGATION_PATTERN.search(text):
+    # "don't forget to X" is a double negation (= "please remember to X")
+    # and must not be counted as negating the scheduling intent.
+    check_text = FORGET_NEGATION.sub("", text)
+    if NEGATION_PATTERN.search(check_text):
         return True
 
-    return any(t.dep_ == "neg" for t in doc)
+    return any(
+        t.dep_ == "neg" and t.head.lemma_ != "forget"
+        for t in doc
+    )
 
 
 def classify(text):
@@ -159,6 +173,10 @@ def classify(text):
     elif negated and temporal:
         decision = "clarify"
         reason = "negated_schedule_like_request_needs_intent_confirmation"
+
+    elif temporal and declarative:
+        decision = "reject"
+        reason = "declarative_schedule_not_request"
 
     elif temporal and request and not declarative:
         decision = "allow"
@@ -217,30 +235,3 @@ def classify(text):
             for t in doc
         ],
     }
-
-
-if __name__ == "__main__":
-    tests = [
-        # allow
-        "Remind me every Monday at 9am.",
-        "Email Acme a recap every Monday at 9am.",
-        "Can you send me a digest every Friday?",
-        "Please notify the team tomorrow morning.",
-        "Create a reminder for next Friday at 9am.",
-
-        # clarify
-        "Next Friday at 9am.",
-        "Please email John.",
-        "Don't remind me every Monday at 9am.",
-
-        # reject
-        "I love waking up every Monday at 9am.",
-        "My backup runs every day.",
-        "We meet every Friday at 10am.",
-        "What is Kubernetes?",
-        "When is Easter next year?",
-    ]
-
-    for test in tests:
-        print(json.dumps(classify(test), indent=2))
-        print("-" * 80)
