@@ -81,8 +81,33 @@ uvicorn app:app --host 0.0.0.0 --port 8080 --reload
 Run the classifier smoke examples:
 
 ```bash
-python intent.py
+python -m unittest discover -s tests -v
 ```
+
+The table-driven cases live in `tests/test_intent.py`, grouped by their
+expected `allow`, `clarify`, or `reject` decision. Add new prompt cases there
+with a boolean indicating whether Duckling should detect a time. Duckling is
+mocked in this suite so tests are deterministic and do not require its local
+service; the real spaCy parsing and classifier decision logic are exercised.
+
+Run the adversarial evaluator while the local API is running:
+
+```bash
+./eval_adversarial.py
+```
+
+When it finds a misclassification, it displays the expected and actual
+decisions and asks before adding the prompt to `ADVERSARIAL_CASES` in
+`tests/test_intent.py`. The newly added regression test is expected to fail.
+Ask Claude to generate a minimal fix, review the proposed patch, and apply it:
+
+```bash
+./fix_classifier.py
+```
+
+The fixer only accepts patches that modify `intent.py`. It applies an approved
+patch, reruns the full test suite, and automatically reverses the patch if the
+tests still fail.
 
 ## Docker
 
