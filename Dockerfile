@@ -14,7 +14,7 @@ RUN dnf install -y python3 curl-minimal \
 
 WORKDIR /app
 
-COPY intent.py app.py start.sh ./
+COPY intent.py suggestions.py app.py start.sh ./
 RUN chmod +x start.sh
 
 EXPOSE 8080

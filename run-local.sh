@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 # Run the intent classifier locally.
 #
-# Starts Duckling in Docker (rasa/duckling image, port 8000), waits for it to
-# accept requests, then launches Uvicorn from the local .venv with --reload.
+# Starts Duckling in Docker (rasa/duckling image, container port 8000), waits
+# for it to accept requests, then launches Uvicorn from the local .venv with
+# --reload.
 #
 # Usage:
 #   ./run-local.sh
 #
 # Environment variables:
-#   PORT              – Uvicorn port                 (default: 8080)
+#   PORT              – Uvicorn port                 (default: 5000)
 #   DUCKLING_PORT     – host port for Duckling       (default: 8000)
 #   DUCKLING_TIMEOUT  – seconds to wait for Duckling (default: 60)
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-PORT="${PORT:-8080}"
+PORT="${PORT:-5000}"
 DUCKLING_PORT="${DUCKLING_PORT:-8000}"
 DUCKLING_TIMEOUT="${DUCKLING_TIMEOUT:-60}"
 DUCKLING_CONTAINER="scheduler0-duckling"
@@ -28,6 +29,11 @@ if [ ! -x .venv/bin/uvicorn ]; then
   echo "  source .venv/bin/activate"
   echo "  pip install -r requirements.txt"
   echo "  python -m spacy download en_core_web_sm"
+  exit 1
+fi
+
+if [ "$PORT" = "$DUCKLING_PORT" ]; then
+  echo "ERROR: PORT and DUCKLING_PORT both set to ${PORT}; they must differ."
   exit 1
 fi
 
@@ -48,6 +54,7 @@ else
     docker start "$DUCKLING_CONTAINER" > /dev/null
   else
     echo "==> Launching Duckling container (rasa/duckling, port ${DUCKLING_PORT})"
+    # rasa/duckling listens on 8000 inside the container
     docker run -d --name "$DUCKLING_CONTAINER" \
       -p "${DUCKLING_PORT}:8000" rasa/duckling > /dev/null
   fi
@@ -68,6 +75,17 @@ else
 fi
 
 # ── Start Uvicorn ─────────────────────────────────────────────────────────────
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN > /dev/null 2>&1; then
+  echo "ERROR: Port ${PORT} is already in use."
+  if [ "$PORT" = "5000" ]; then
+    echo "On macOS, AirPlay Receiver often binds 5000 (ControlCenter)."
+    echo "Disable it: System Settings → General → AirDrop & Handoff → AirPlay Receiver"
+    echo "Or run with a free port: PORT=5001 ./run-local.sh"
+  fi
+  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN || true
+  exit 1
+fi
+
 export DUCKLING_URL
 echo "==> Starting Uvicorn on http://127.0.0.1:${PORT} (Ctrl-C to stop)"
 echo "    Duckling container '${DUCKLING_CONTAINER}' keeps running; stop it with:"
