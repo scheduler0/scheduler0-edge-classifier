@@ -1,0 +1,23 @@
+name: Deploy Intent Classifier to Amazon ECS (production)
+
+on:
+  release:
+    types: [published]
+    tags: ["v*.*.*"]
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: intent-classifier-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      environment: production
+      env_name: production
+      doppler_config: production_scheduler0_app
+    secrets: inherit
