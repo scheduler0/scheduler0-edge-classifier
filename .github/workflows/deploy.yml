@@ -19,5 +19,4 @@ jobs:
     with:
       environment: production
       env_name: production
-      doppler_config: production_scheduler0_app
     secrets: inherit
