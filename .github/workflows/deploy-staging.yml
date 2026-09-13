@@ -15,5 +15,4 @@ jobs:
     with:
       environment: staging
       env_name: staging
-      doppler_config: stg_scheduler0_app
     secrets: inherit
