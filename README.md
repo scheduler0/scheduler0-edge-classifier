@@ -4,6 +4,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
 [![spaCy](https://img.shields.io/badge/spaCy-3.7-blue.svg)](https://spacy.io/)
+[![Tests](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml/badge.svg)](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml)
 [![Bugbot Auto-Fix](https://img.shields.io/badge/Bugbot-Enabled-brightgreen)](BUGBOT_SETUP.md)
 
 A lightweight, deterministic NLP-based intent classification service for [Scheduler0](https://github.com/scheduler0). It analyzes user messages to determine whether they represent scheduling requests, require clarification, or should be rejected before entering the main scheduler workflow.
