@@ -13,7 +13,10 @@ single ``analyze()`` call. There is no persistence here.
 
 English only: the ``locale`` option accepts empty (default ``en``) or any ``en*``
 value; any other value raises :class:`UnsupportedLocaleError`, which the FastAPI
-layer surfaces as a ``400 UNSUPPORTED_LOCALE`` error.
+layer surfaces as a ``400 UNSUPPORTED_LOCALE`` error. English region codes are the
+ones Duckling ships (``en_AU``, ``en_BZ``, ``en_CA``, ``en_GB``, ``en_IE``,
+``en_IN``, ``en_JM``, ``en_NZ``, ``en_PH``, ``en_TT``, ``en_US``, ``en_ZA``).
+Any other English tag falls back to ``en_GB``.
 """
 
 import os
@@ -95,22 +98,33 @@ def is_english_locale(locale):
     return locale == "" or locale.startswith("en")
 
 
+# English regions Duckling's Locale.allLocales actually ships. Unknown English
+# tags (``en``, ``en_XX``, ``english``) fall back to en_GB, which is also the
+# locale the intent classifier sends.
+DUCKLING_ENGLISH_REGIONS = frozenset(
+    {"AU", "BZ", "CA", "GB", "IE", "IN", "JM", "NZ", "PH", "TT", "US", "ZA"}
+)
+
+
 def resolve_duckling_locale(locale):
     """Normalize a requested locale to a Duckling-supported English locale.
 
     Raises UnsupportedLocaleError for any non-English locale so the caller can
-    reject it before spending spaCy/Duckling work.
+    reject it before spending spaCy/Duckling work. Recognized region tags are
+    returned as ``en_<REGION>`` regardless of input case or hyphen/underscore
+    spelling. Anything else English falls back to ``en_GB``.
     """
     if not is_english_locale(locale):
         raise UnsupportedLocaleError(locale)
 
     normalized = (locale or "en").strip().replace("-", "_")
-    # Duckling ships a handful of English locales; map to the closest supported
-    # one and fall back to en_GB (the value the intent classifier already uses).
-    supported = {"en_gb", "en_us", "en_au", "en_ca", "en_nz", "en_bz", "en_in"}
-    lowered = normalized.lower()
-    if lowered in supported:
-        return normalized
+    parts = [part for part in normalized.split("_") if part]
+    if (
+        len(parts) >= 2
+        and parts[0].lower() == "en"
+        and parts[1].upper() in DUCKLING_ENGLISH_REGIONS
+    ):
+        return f"en_{parts[1].upper()}"
     return "en_GB"
 
 
