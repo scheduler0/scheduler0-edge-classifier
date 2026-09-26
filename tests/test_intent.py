@@ -26,6 +26,96 @@ TEST_CASES = {
     ],
 }
 
+# (text, expected decision, expected reason, Duckling detected time/duration).
+# Recurrence phrases set has_time False on purpose: the weekday/period regex
+# must count as a temporal signal even when Duckling returns nothing.
+EDGE_CASES = [
+    ("", "reject", "not_a_schedule_request", False),
+    ("   ", "reject", "not_a_schedule_request", False),
+    ("???", "reject", "not_a_schedule_request", False),
+    (".", "reject", "not_a_schedule_request", False),
+    ("ok", "reject", "not_a_schedule_request", False),
+    ("0", "reject", "not_a_schedule_request", False),
+    ("<script>alert(1)</script>", "reject", "not_a_schedule_request", False),
+    ("", "clarify", "temporal_signal_without_clear_request", True),
+    ("???", "clarify", "temporal_signal_without_clear_request", True),
+    ("tomorrow", "clarify", "temporal_signal_without_clear_request", True),
+    ("9am", "clarify", "temporal_signal_without_clear_request", True),
+    ("Remind me.", "clarify", "request_without_temporal_signal", False),
+    ("Please remind me.", "clarify", "request_without_temporal_signal", False),
+    ("Please email John.", "clarify", "request_without_temporal_signal", False),
+    ("Can you send the file?", "clarify", "request_without_temporal_signal", False),
+    ("Schedule", "clarify", "request_without_temporal_signal", False),
+    ("set up", "clarify", "request_without_temporal_signal", False),
+    ("Don't remind me.", "clarify", "request_without_temporal_signal", False),
+    ("Remind me.", "allow", "request_with_temporal_signal", True),
+    ("Please remind me.", "allow", "request_with_temporal_signal", True),
+    ("Can you send the file?", "allow", "request_with_temporal_signal", True),
+    ("  Can you   remind me tomorrow?  ", "allow", "request_with_temporal_signal", True),
+    ("please\nremind me tomorrow", "allow", "request_with_temporal_signal", True),
+    ("\tRemind me\ttomorrow\n", "allow", "request_with_temporal_signal", True),
+    ("Remind me tomorrow 😊", "allow", "request_with_temporal_signal", True),
+    ("...Remind me tomorrow", "allow", "request_with_temporal_signal", True),
+    ("I want you to email the report next Tuesday", "allow", "request_with_temporal_signal", True),
+    ("Help me schedule a call tomorrow", "allow", "request_with_temporal_signal", True),
+    ("would you schedule the review for Thursday?", "allow", "request_with_temporal_signal", True),
+    ("help me remember this Friday", "allow", "request_with_temporal_signal", True),
+    ("schedule the interview tomorrow afternoon", "allow", "request_with_temporal_signal", True),
+    ("What about Friday?", "allow", "request_with_temporal_signal", True),
+    ("What about Friday?", "clarify", "request_without_temporal_signal", False),
+    ("Please don't forget to remind me about the 3pm meeting", "allow", "request_with_temporal_signal", True),
+    ("Please do not forget to remind me tomorrow", "allow", "request_with_temporal_signal", True),
+    ("Don't forget the 3pm meeting", "allow", "request_with_temporal_signal", True),
+    ("Don't forget the 3pm meeting", "clarify", "request_without_temporal_signal", False),
+    ("Don't remind me.", "clarify", "negated_schedule_like_request_needs_intent_confirmation", True),
+    ("Don't remind me every Monday at 9am.", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("Don\u2019t remind me every Monday at 9am.", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("do NOT remind me each weekend", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("Never email me every Monday", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("STOP reminding me every day", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("I will not attend every Friday", "clarify", "negated_schedule_like_request_needs_intent_confirmation", False),
+    ("Cancel the Monday reminder", "clarify", "negated_schedule_like_request_needs_intent_confirmation", True),
+    ("remove the daily digest", "clarify", "negated_schedule_like_request_needs_intent_confirmation", True),
+    ("dont cancel the Friday sync", "clarify", "negated_schedule_like_request_needs_intent_confirmation", True),
+    ("Never mind the Monday reminder", "clarify", "negated_schedule_like_request_needs_intent_confirmation", True),
+    ("every Monday", "clarify", "temporal_signal_without_clear_request", False),
+    ("Thanks. Remind me every Monday at 9am.", "clarify", "temporal_signal_without_clear_request", False),
+    ("Next Friday at 9am.", "clarify", "temporal_signal_without_clear_request", True),
+    ("The meeting is tomorrow.", "reject", "declarative_schedule_not_request", True),
+    ("I'll send the proposal tomorrow.", "reject", "declarative_schedule_not_request", True),
+    ("I love waking up every Monday at 9am.", "reject", "declarative_schedule_not_request", False),
+    ("Why do we meet every Monday?", "reject", "informational_question_not_schedule_request", False),
+    ("Who scheduled the Friday standup?", "reject", "informational_question_not_schedule_request", False),
+    ("Which day is the review?", "reject", "informational_question_not_schedule_request", False),
+    ("Where is the Monday meeting?", "reject", "informational_question_not_schedule_request", False),
+    ("What time is the standup?", "reject", "informational_question_not_schedule_request", True),
+    ("How about tomorrow at 3?", "reject", "informational_question_not_schedule_request", True),
+    ("When should we meet?", "reject", "informational_question_not_schedule_request", True),
+    ("What is Kubernetes?", "reject", "informational_question_not_schedule_request", True),
+]
+
+RECURRENCE_GRAINS = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "day",
+    "week",
+    "month",
+    "year",
+    "morning",
+    "afternoon",
+    "evening",
+    "night",
+    "weekday",
+    "weekend",
+    "mondays",
+    "fridays",
+]
+
 # Confirmed failures found by eval_adversarial.py are inserted in this list.
 # Tuple format: (prompt, expected decision, Duckling detected time/duration).
 ADVERSARIAL_CASES = [
@@ -59,6 +149,108 @@ class IntentClassifierTests(unittest.TestCase):
 
         for text, expected, has_time in ADVERSARIAL_CASES:
             self.assert_classification(text, expected, has_time)
+
+    def test_edge_case_classifications(self):
+        for text, expected, reason, has_time in EDGE_CASES:
+            with self.subTest(text=text, has_time=has_time):
+                result = self.classify_with_time(text, has_time)
+                self.assertEqual(expected, result["decision"], result["reason"])
+                self.assertEqual(reason, result["reason"])
+
+    def test_recurrence_regex_without_duckling(self):
+        for grain in RECURRENCE_GRAINS:
+            for quantifier in ("every", "each"):
+                text = f"Remind me {quantifier} {grain}."
+                with self.subTest(text=text):
+                    result = self.classify_with_time(text, False)
+                    self.assertTrue(result["features"]["recurrence_regex_match"])
+                    self.assertFalse(result["features"]["duckling_has_time"])
+                    self.assertTrue(result["features"]["has_temporal_signal"])
+                    self.assertEqual("allow", result["decision"])
+                    self.assertEqual("request_with_temporal_signal", result["reason"])
+
+    def test_duration_entity_counts_as_temporal_signal(self):
+        entities = [
+            {
+                "body": "2 hours",
+                "dim": "duration",
+                "value": {"type": "value", "value": 2, "unit": "hour"},
+            }
+        ]
+        result = self.classify_with_entities("Remind me in a bit.", entities)
+        self.assertTrue(result["features"]["duckling_has_time"])
+        self.assertEqual("allow", result["decision"])
+        self.assertEqual(entities[0]["dim"], result["duckling_entities"][0]["dim"])
+
+    def test_non_time_entity_is_ignored(self):
+        entities = [
+            {"body": "42", "dim": "number", "value": {"type": "value", "value": 42}}
+        ]
+        result = self.classify_with_entities("Remind me.", entities)
+        self.assertFalse(result["features"]["duckling_has_time"])
+        self.assertEqual("clarify", result["decision"])
+        self.assertEqual("request_without_temporal_signal", result["reason"])
+
+    def test_duckling_is_always_called_with_english_locale(self):
+        samples = [
+            "Remind me tomorrow",
+            "",
+            "Rappelle-moi demain",
+            "每星期一提醒我",
+            "Напомни мне завтра",
+        ]
+        for text in samples:
+            with self.subTest(text=text):
+                with patch("intent.requests.post") as post:
+                    response = post.return_value
+                    response.raise_for_status.return_value = None
+                    response.json.return_value = []
+                    result = classify(text)
+                self.assertIn(result["decision"], {"allow", "clarify", "reject"})
+                post.assert_called_once()
+                data = post.call_args.kwargs["data"]
+                self.assertEqual("en_GB", data["locale"])
+                self.assertEqual(text, data["text"])
+                self.assertEqual('["time","duration"]', data["dims"])
+
+    def test_feature_payload_for_imperative_and_declarative(self):
+        allow = self.classify_with_time("Remind me every Monday at 9am.", False)
+        features = allow["features"]
+        self.assertTrue(features["looks_like_request"])
+        self.assertFalse(features["looks_like_declarative"])
+        self.assertFalse(features["looks_like_info_question"])
+        self.assertFalse(features["has_negation"])
+        self.assertFalse(features["has_subject"])
+        self.assertEqual("remind", features["root"]["lemma"])
+        self.assertEqual("VERB", features["root"]["pos"])
+        self.assertTrue(allow["tokens"])
+
+        statement = self.classify_with_time("I love waking up every Monday at 9am.", False)
+        features = statement["features"]
+        self.assertTrue(features["looks_like_declarative"])
+        self.assertTrue(features["has_non_request_subject"])
+        self.assertFalse(features["has_second_person_subject"])
+        self.assertEqual("love", features["root"]["lemma"])
+
+        question = self.classify_with_time("Can you send me a digest every Friday?", False)
+        self.assertTrue(question["features"]["has_second_person_subject"])
+        self.assertTrue(question["features"]["looks_like_request"])
+        self.assertFalse(question["features"]["looks_like_declarative"])
+
+    def test_long_text_does_not_crash(self):
+        text = "Remind me every Monday at 9am. " * 50
+        result = self.classify_with_time(text, False)
+        self.assertEqual("allow", result["decision"])
+        self.assertGreater(len(result["tokens"]), 10)
+
+    def classify_with_time(self, text, has_time):
+        return self.classify_with_entities(text, duckling_entities(has_time))
+
+    def classify_with_entities(self, text, entities):
+        with patch("intent.duckling_parse", return_value=entities):
+            from intent import classify
+
+            return classify(text)
 
     def assert_classification(self, text, expected, has_time):
         with self.subTest(expected=expected, text=text):
