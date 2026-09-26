@@ -166,6 +166,11 @@ ADVERSARIAL_CASES = [
     ("What if it rains every Monday?", "reject", True),
     ("Book club meets every Monday at 9am.", "reject", True),
     ("I love to schedule meetings every Monday.", "reject", True),
+    # Bugbot review fixes: preference statements, let-verb, unrelated proposals
+    ("I like to schedule meetings every Monday at 9am.", "reject", True),
+    ("This app lets me schedule meetings every Monday at 9am.", "reject", True),
+    ("What if the book club meets every Monday at 9am?", "reject", True),
+    ("How about my book club on Tuesday?", "reject", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 

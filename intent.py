@@ -24,10 +24,11 @@ REQUEST_PHRASES = re.compile(
     r"please|can you|could you|would you|will you|"
     r"i need you to|i want you to|"
     r"help me|"
-    r"what about|let's|lets|let us|"
-    r"can we|could we|shall we|should we|"
+    r"what about|can we|could we|shall we|should we|"
     r"do you mind"
-    r")\b",
+    r")\b"
+    r"|\blet'?s(?!\s+(?:us|me|him|her|them)\b)(?=\s)"
+    r"|\blet\s+us(?!\s+(?:me|him|her|them)\b)(?=\s)",
     re.I,
 )
 
@@ -62,10 +63,16 @@ DEADLINE_REQUEST = re.compile(
 
 # "I'd like to schedule", "I want a reminder", "I need a meeting".
 FIRST_PERSON_SCHEDULE = re.compile(
-    r"\bi(?:['’]?d|\s+would)?\s+(?:like|want|need)\b(?:\s+you)?\s+to\s+"
+    r"\bi(?:['']d|\s+would)\s+like\b(?:\s+you)?\s+to\s+"
     r"(?:schedule|book|remind|set|create|send|email|notify|ping|meet|move|reschedule)\b"
     r"|"
-    r"\bi(?:['’]?d|\s+would)?\s+(?:like|want|need)\s+(?:a|an|the)\s+"
+    r"\bi(?:['']d|\s+would)\s+like\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|event|appointment)\b"
+    r"|"
+    r"\bi\s+(?:want|need)\b(?:\s+you)?\s+to\s+"
+    r"(?:schedule|book|remind|set|create|send|email|notify|ping|meet|move|reschedule)\b"
+    r"|"
+    r"\bi\s+(?:want|need)\s+(?:a|an|the)\s+"
     r"(?:reminder|meeting|call|sync|event|appointment)\b",
     re.I,
 )
@@ -215,7 +222,22 @@ def has_non_request_subject(doc):
 
 
 def has_scheduling_proposal(text):
-    return bool(PROPOSAL_PREFIX.search(text) and SCHEDULE_CONTENT.search(text))
+    # "how about" / "what if" are proposals only when followed by scheduling action.
+    # "What if the book club meets..." has "book" but it's not a scheduling proposal.
+    match = PROPOSAL_PREFIX.search(text)
+    if not match:
+        return False
+    # Look for explicit scheduling proposal patterns after "how about"/"what if"
+    text_after = text[match.end():]
+    # Match patterns like "we schedule", "I schedule", "scheduling a", "moving the", etc.
+    # This avoids matching "the book club" or "my book" where "book" is a noun
+    proposal_pattern = re.compile(
+        r"\b(?:we|i)\s+(?:schedule|book|meet|reschedule|move|cancel)\b"
+        r"|\b(?:scheduling|booking|meeting|rescheduling|moving|canceling)\s+(?:a|an|the)\b"
+        r"|\b(?:schedule|book|meet|reschedule|move|cancel)\s+(?:a|an|the|our|my)\b",
+        re.I
+    )
+    return bool(proposal_pattern.search(text_after))
 
 
 def has_request_phrase(text):
