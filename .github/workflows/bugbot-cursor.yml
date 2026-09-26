@@ -1,0 +1,285 @@
+name: Bugbot Auto-Fix with Cursor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  statuses: write
+
+concurrency:
+  group: bugbot-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  bugbot-analyze:
+    name: Bugbot Analysis
+    runs-on: ubuntu-latest
+    
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && 
+       (contains(github.event.comment.body, '@bugbot') || contains(github.event.comment.body, '/bugbot'))) ||
+      (github.event_name == 'pull_request_review_comment')
+    
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      has_issues: ${{ steps.test.outputs.exit_code != '0' || steps.lint.outputs.exit_code != '0' }}
+      
+    steps:
+    - name: Get PR information
+      id: pr
+      uses: actions/github-script@v7
+      with:
+        script: |
+          let prNumber, prData;
+          
+          if (context.eventName === 'pull_request') {
+            prNumber = context.payload.pull_request.number;
+            prData = context.payload.pull_request;
+          } else if (context.eventName === 'issue_comment') {
+            prNumber = context.payload.issue.number;
+            const { data } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            prData = data;
+          } else if (context.eventName === 'pull_request_review_comment') {
+            prNumber = context.payload.pull_request.number;
+            prData = context.payload.pull_request;
+          }
+          
+          core.setOutput('number', prNumber);
+          core.setOutput('sha', prData.head.sha);
+          core.setOutput('ref', prData.head.ref);
+          core.setOutput('repo', prData.head.repo.full_name);
+    
+    - name: Checkout PR branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ steps.pr.outputs.sha }}
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        python -m spacy download en_core_web_sm
+    
+    - name: Run tests
+      id: test
+      continue-on-error: true
+      run: |
+        set +e
+        python -m unittest discover -s tests -v 2>&1 | tee test_output.txt
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        echo "exit_code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+        
+        if [ $TEST_EXIT_CODE -ne 0 ]; then
+          echo "⚠️ Tests failed with exit code $TEST_EXIT_CODE"
+          echo "## Test Failures" > test_summary.md
+          echo "\`\`\`" >> test_summary.md
+          tail -100 test_output.txt >> test_summary.md
+          echo "\`\`\`" >> test_summary.md
+        else
+          echo "✅ All tests passed"
+          echo "## All Tests Passed ✅" > test_summary.md
+        fi
+    
+    - name: Run Python syntax check
+      id: lint
+      continue-on-error: true
+      run: |
+        set +e
+        echo "Checking Python syntax..."
+        find . -name "*.py" -not -path "./.venv/*" -not -path "./tests/*" | while read file; do
+          python -m py_compile "$file" 2>&1
+        done | tee lint_output.txt
+        LINT_EXIT_CODE=${PIPESTATUS[0]}
+        echo "exit_code=$LINT_EXIT_CODE" >> $GITHUB_OUTPUT
+    
+    - name: Generate Bugbot report
+      id: report
+      run: |
+        cat > bugbot_report.md << 'EOFMARKER'
+        # 🐛 Bugbot Analysis Report
+        
+        EOFMARKER
+        
+        if [ "${{ steps.test.outputs.exit_code }}" != "0" ] || [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
+          cat >> bugbot_report.md << 'EOFMARKER'
+        ## Issues Detected
+        
+        EOFMARKER
+          
+          if [ "${{ steps.test.outputs.exit_code }}" != "0" ]; then
+            cat >> bugbot_report.md << 'EOFMARKER'
+        ### ❌ Test Failures
+        
+        Some tests are failing. Review the details below.
+        
+        EOFMARKER
+            cat test_summary.md >> bugbot_report.md
+          fi
+          
+          if [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
+            cat >> bugbot_report.md << 'EOFMARKER'
+        
+        ### ⚠️ Syntax Issues
+        
+        Python syntax errors detected.
+        
+        EOFMARKER
+          fi
+          
+          cat >> bugbot_report.md << 'EOFMARKER'
+        
+        ## 🔧 Auto-Fix Available
+        
+        Bugbot can automatically attempt to fix these issues. To trigger auto-fix:
+        
+        1. **Manual trigger**: Comment `/bugbot fix` on this PR
+        2. **Automatic**: Fixes will be attempted automatically if configured
+        
+        ## Next Steps
+        
+        - Review the test output above
+        - If auto-fix is enabled, Bugbot will push commits to this branch
+        - You can also fix manually and push updates
+        
+        ---
+        *Powered by Cursor Bugbot* 🤖
+        EOFMARKER
+        else
+          cat >> bugbot_report.md << 'EOFMARKER'
+        ## ✅ All Checks Passed
+        
+        No issues detected! The code looks good.
+        
+        - Tests: ✅ Passing
+        - Syntax: ✅ Valid
+        
+        Great work! 🎉
+        EOFMARKER
+        fi
+    
+    - name: Post Bugbot report
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('bugbot_report.md', 'utf8');
+          
+          // Find existing Bugbot comments
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ steps.pr.outputs.number }}
+          });
+          
+          const bugbotComment = comments.find(comment => 
+            comment.user.login === 'github-actions[bot]' && 
+            comment.body.includes('🐛 Bugbot Analysis Report')
+          );
+          
+          if (bugbotComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: bugbotComment.id,
+              body: report
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr.outputs.number }},
+              body: report
+            });
+          }
+    
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bugbot-analysis
+        path: |
+          test_output.txt
+          lint_output.txt
+          bugbot_report.md
+        retention-days: 7
+
+  cursor-autofix:
+    name: Cursor Auto-Fix
+    needs: bugbot-analyze
+    runs-on: ubuntu-latest
+    if: |
+      needs.bugbot-analyze.outputs.has_issues == 'true' &&
+      (github.event_name == 'pull_request' ||
+       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/bugbot fix')))
+    
+    steps:
+    - name: Post auto-fix starting message
+      uses: actions/github-script@v7
+      with:
+        script: |
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ needs.bugbot-analyze.outputs.pr_number }},
+            body: '🔧 **Bugbot Auto-Fix Starting**\n\nAttempting to automatically fix detected issues...\n\n_This may take a few minutes._'
+          });
+    
+    - name: Trigger Cursor Cloud Agent
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Note: This is a placeholder for Cursor Cloud Agent integration
+          // In a production setup, this would trigger a Cursor Cloud Agent
+          // to analyze the PR and push fixes
+          
+          const message = `## 🤖 Cursor Auto-Fix
+          
+          To enable full auto-fix capabilities with Cursor Cloud Agents:
+          
+          1. **Install Cursor Cloud Agent** in your repository
+          2. **Configure secrets** in repository settings:
+             - Add \`CURSOR_API_KEY\` for authentication
+          3. **Enable Auto-Fix** in Cursor settings
+          
+          ### Manual Fix Instructions
+          
+          Until auto-fix is configured, you can manually run:
+          
+          \`\`\`bash
+          # Run tests locally
+          python -m unittest discover -s tests -v
+          
+          # Use the fix_classifier.py tool if available
+          ./fix_classifier.py
+          \`\`\`
+          
+          For more information, visit [Cursor Documentation](https://cursor.com/docs).`;
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ needs.bugbot-analyze.outputs.pr_number }},
+            body: message
+          });
