@@ -1,0 +1,214 @@
+name: Bugbot with Cursor Cloud Agent
+
+# This is an advanced workflow that integrates with Cursor Cloud Agent
+# for sophisticated auto-fixing capabilities
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to analyze and fix'
+        required: true
+        type: number
+      fix_mode:
+        description: 'Fix mode'
+        required: true
+        type: choice
+        options:
+          - analyze_only
+          - auto_fix
+          - suggest_fixes
+        default: analyze_only
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  cursor-agent-fix:
+    name: Cursor Cloud Agent Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Get PR Details
+      id: pr
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: pr } = await github.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: ${{ inputs.pr_number }}
+          });
+          
+          core.setOutput('branch', pr.head.ref);
+          core.setOutput('sha', pr.head.sha);
+          core.setOutput('base', pr.base.ref);
+          
+          return pr;
+    
+    - name: Checkout PR Branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ steps.pr.outputs.sha }}
+        fetch-depth: 0
+    
+    - name: Fetch base branch
+      run: |
+        git fetch origin ${{ steps.pr.outputs.base }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        python -m spacy download en_core_web_sm
+    
+    - name: Run tests and collect failures
+      id: tests
+      continue-on-error: true
+      run: |
+        set +e
+        python -m unittest discover -s tests -v 2>&1 | tee test_results.txt
+        TEST_EXIT=$?
+        echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
+        
+        # Parse test failures
+        if [ $TEST_EXIT -ne 0 ]; then
+          echo "failures_found=true" >> $GITHUB_OUTPUT
+          grep -E "^(FAIL|ERROR):" test_results.txt > failures_summary.txt || true
+          echo "failure_count=$(wc -l < failures_summary.txt)" >> $GITHUB_OUTPUT
+        else
+          echo "failures_found=false" >> $GITHUB_OUTPUT
+          echo "failure_count=0" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Generate diff analysis
+      if: steps.tests.outputs.failures_found == 'true'
+      run: |
+        # Get the diff for context
+        git diff origin/${{ steps.pr.outputs.base }}..HEAD > pr_diff.txt
+        
+        # Create a structured analysis file
+        cat > analysis_context.json << EOF
+        {
+          "pr_number": ${{ inputs.pr_number }},
+          "branch": "${{ steps.pr.outputs.branch }}",
+          "base_branch": "${{ steps.pr.outputs.base }}",
+          "test_failures": $(cat failures_summary.txt | jq -R . | jq -s .),
+          "fix_mode": "${{ inputs.fix_mode }}",
+          "repository": "${{ github.repository }}"
+        }
+        EOF
+    
+    - name: Post analysis to PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const testResults = fs.readFileSync('test_results.txt', 'utf8');
+          const failuresFound = '${{ steps.tests.outputs.failures_found }}' === 'true';
+          const failureCount = '${{ steps.tests.outputs.failure_count }}';
+          const fixMode = '${{ inputs.fix_mode }}';
+          
+          let body = '## 🤖 Cursor Cloud Agent Analysis\n\n';
+          
+          if (!failuresFound) {
+            body += '✅ **All tests passing!** No issues detected.\n';
+          } else {
+            body += `⚠️ **Found ${failureCount} test failure(s)**\n\n`;
+            body += '### Test Results\n\n';
+            body += '<details><summary>View test output</summary>\n\n';
+            body += '```\n' + testResults.slice(-3000) + '\n```\n';
+            body += '</details>\n\n';
+            
+            if (fixMode === 'analyze_only') {
+              body += '### Analysis Mode\n\n';
+              body += 'This run analyzed the PR but did not attempt fixes.\n\n';
+              body += 'To trigger auto-fix, run this workflow again with `fix_mode: auto_fix`.\n';
+            } else if (fixMode === 'suggest_fixes') {
+              body += '### Suggested Fixes\n\n';
+              body += 'Based on the test failures, consider:\n\n';
+              body += '1. Review the test expectations\n';
+              body += '2. Check if code changes match test assertions\n';
+              body += '3. Update logic in the affected modules\n';
+            } else if (fixMode === 'auto_fix') {
+              body += '### Auto-Fix Mode\n\n';
+              body += '⚙️ Auto-fix is enabled. To implement auto-fix:\n\n';
+              body += '1. Configure `CURSOR_API_KEY` in repository secrets\n';
+              body += '2. Ensure Cursor Cloud Agent access is enabled\n';
+              body += '3. See [BUGBOT_SETUP.md](BUGBOT_SETUP.md) for details\n\n';
+              body += 'For now, please fix manually or use the suggestions above.\n';
+            }
+          }
+          
+          body += '\n---\n';
+          body += '_Triggered manually via workflow dispatch_\n';
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ inputs.pr_number }},
+            body: body
+          });
+    
+    - name: Prepare Cursor Agent Context (if fix mode enabled)
+      if: |
+        steps.tests.outputs.failures_found == 'true' && 
+        inputs.fix_mode == 'auto_fix'
+      run: |
+        # This would prepare the context for Cursor Cloud Agent
+        # In a full implementation, this would:
+        # 1. Call Cursor Cloud Agent API
+        # 2. Pass test failures and code context
+        # 3. Receive generated fixes
+        # 4. Apply and commit the fixes
+        
+        echo "📝 Preparing context for Cursor Cloud Agent..."
+        echo "Test failures: ${{ steps.tests.outputs.failure_count }}"
+        echo "PR: #${{ inputs.pr_number }}"
+        echo ""
+        echo "To enable full Cursor integration:"
+        echo "1. Add CURSOR_API_KEY to repository secrets"
+        echo "2. Configure Cursor Cloud Agent permissions"
+        echo "3. See BUGBOT_SETUP.md for complete instructions"
+    
+    - name: Upload analysis artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cursor-agent-analysis-pr-${{ inputs.pr_number }}
+        path: |
+          test_results.txt
+          failures_summary.txt
+          pr_diff.txt
+          analysis_context.json
+        retention-days: 30
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## 📊 Cursor Cloud Agent Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **PR**: #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ steps.pr.outputs.branch }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Fix Mode**: ${{ inputs.fix_mode }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Test Result**: ${{ steps.tests.outputs.exit_code == '0' && '✅ Passing' || '❌ Failures' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Failures Found**: ${{ steps.tests.outputs.failure_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ steps.tests.outputs.exit_code }}" != "0" ]; then
+          echo "### ⚠️ Action Required" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test failures were detected. See the PR comment for details." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ✅ All Clear" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No issues detected in this PR." >> $GITHUB_STEP_SUMMARY
+        fi
