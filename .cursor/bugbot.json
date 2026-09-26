@@ -1,0 +1,41 @@
+{
+  "bugbot": {
+    "enabled": true,
+    "auto_fix": true,
+    "auto_commit": true,
+    "commit_message_template": "fix: auto-fix issues detected by Bugbot\n\n{issue_summary}",
+    "analysis": {
+      "run_tests": true,
+      "test_command": "python -m unittest discover -s tests -v",
+      "check_syntax": true,
+      "check_imports": true,
+      "check_style": false
+    },
+    "notifications": {
+      "comment_on_pr": true,
+      "detailed_reports": true,
+      "update_status": true
+    },
+    "fix_strategies": {
+      "test_failures": "analyze_and_fix",
+      "syntax_errors": "auto_fix",
+      "import_errors": "auto_fix",
+      "style_issues": "suggest_only"
+    },
+    "limits": {
+      "max_fix_attempts": 3,
+      "max_commits_per_run": 5
+    }
+  },
+  "review": {
+    "on_pr_opened": true,
+    "on_pr_updated": true,
+    "on_review_requested": true,
+    "focus_areas": [
+      "test_coverage",
+      "error_handling",
+      "code_quality",
+      "security"
+    ]
+  }
+}
