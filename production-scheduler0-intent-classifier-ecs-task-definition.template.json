@@ -1,8 +1,8 @@
 {
     "containerDefinitions": [
         {
-            "name": "staging-scheduler0-intent-classifier",
-            "image": "748201447723.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:latest",
+            "name": "production-scheduler0-intent-classifier",
+            "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/production-scheduler0-intent-classifier:latest",
             "cpu": 1024,
             "memory": 2048,
             "essential": true,
@@ -15,7 +15,7 @@
             "environment": [
                 {
                     "name": "ENV",
-                    "value": "staging"
+                    "value": "production"
                 }
             ],
             "mountPoints": [
@@ -33,8 +33,8 @@
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
-                    "awslogs-group": "ecs/staging-scheduler0-intent-classifier-ecs-service",
-                    "awslogs-region": "us-east-1",
+                    "awslogs-group": "ecs/production-scheduler0-intent-classifier-ecs-service",
+                    "awslogs-region": "<AWS_REGION>",
                     "awslogs-stream-prefix": "ecs"
                 }
             },
@@ -48,7 +48,7 @@
             "systemControls": []
         }
     ],
-    "family": "staging_scheduler0-intent-classifier",
+    "family": "production_scheduler0-intent-classifier",
     "networkMode": "awsvpc",
     "volumes": [
         {
@@ -75,6 +75,6 @@
     ],
     "cpu": "1024",
     "memory": "2048",
-    "executionRoleArn": "arn:aws:iam::748201447723:role/staging_scheduler0_ecs_task_execution_role",
-    "taskRoleArn": "arn:aws:iam::748201447723:role/staging_scheduler0_ecs_task_execution_role"
+    "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role",
+    "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role"
 }
