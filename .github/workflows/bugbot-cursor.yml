@@ -12,6 +12,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  statuses: write
 
 concurrency:
   group: bugbot-${{ github.event.pull_request.number || github.event.issue.number }}

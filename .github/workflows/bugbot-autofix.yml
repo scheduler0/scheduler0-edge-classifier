@@ -12,6 +12,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  statuses: write
 
 jobs:
   bugbot-review:
