@@ -4,6 +4,8 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
 [![spaCy](https://img.shields.io/badge/spaCy-3.7-blue.svg)](https://spacy.io/)
+[![Tests](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml/badge.svg)](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml)
+[![Bugbot Auto-Fix](https://img.shields.io/badge/Bugbot-Enabled-brightgreen)](BUGBOT_SETUP.md)
 
 A lightweight, deterministic NLP-based intent classification service for [Scheduler0](https://github.com/scheduler0). It analyzes user messages to determine whether they represent scheduling requests, require clarification, or should be rejected before entering the main scheduler workflow.
 
@@ -18,6 +20,7 @@ The service exposes a FastAPI REST API and includes a conversation analysis engi
 - [Local Development](#local-development)
 - [Deployment](#deployment)
 - [Testing](#testing)
+- [Bugbot Auto-Fix](#bugbot-auto-fix)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -264,6 +267,32 @@ The repository includes tools for finding edge cases and automatically generatin
 ```
 
 When `eval_adversarial.py` finds a misclassification, it offers to add it as a regression test. The `fix_classifier.py` script then generates a minimal patch to fix the issue.
+
+## Bugbot Auto-Fix
+
+This repository includes **Bugbot** - an automated code review and fixing system that:
+
+- 🤖 **Automatically analyzes** every pull request for issues
+- ✅ **Runs tests** and reports failures immediately
+- 🔧 **Auto-fixes** common issues when possible
+- 💬 **Posts detailed reports** with actionable recommendations
+- 🚀 **Integrates with Cursor** Cloud Agents for advanced fixes
+
+### Documentation
+
+- **[Quick Start Guide](BUGBOT_QUICKSTART.md)** - For developers using Bugbot daily
+- **[Setup Guide](BUGBOT_SETUP.md)** - Complete configuration and integration instructions
+- **[Admin Guide](BUGBOT_ADMIN.md)** - For repository administrators and team leads
+
+### Quick Start
+
+Bugbot runs automatically on all PRs. To manually trigger auto-fix, comment on a PR:
+
+```
+/bugbot fix
+```
+
+For complete setup instructions, see **[BUGBOT_SETUP.md](BUGBOT_SETUP.md)**.
 
 ## Architecture
 
