@@ -384,6 +384,155 @@ class IntentClassifierTests(unittest.TestCase):
         locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
         self.assertEqual(["fr_FR", "en_GB"], locales)
 
+    def test_french_recurrence_grains_without_duckling(self):
+        tous_les = [
+            "lundi",
+            "mardi",
+            "mercredi",
+            "jeudi",
+            "vendredi",
+            "samedi",
+            "dimanche",
+            "jour",
+            "semaine",
+            "mois",
+            "an",
+            "année",
+            "matin",
+            "après-midi",
+            "apres-midi",
+            "soir",
+            "nuit",
+            "lundis",
+            "jours",
+            "semaines",
+            "nuits",
+            "soirs",
+        ]
+        chaque = [
+            "lundi",
+            "mardi",
+            "mercredi",
+            "jeudi",
+            "vendredi",
+            "samedi",
+            "dimanche",
+            "jour",
+            "semaine",
+            "mois",
+            "matin",
+            "après-midi",
+            "apres-midi",
+            "soir",
+            "nuit",
+            "premier",
+        ]
+        phrases = [f"Rappelle-moi tous les {grain}." for grain in tous_les]
+        phrases += [
+            "Rappelle-moi toutes les semaines.",
+            "Rappelle-moi toutes les nuits.",
+        ]
+        phrases += [f"Rappelle-moi chaque {grain}." for grain in chaque]
+        phrases.append("Rappelle-moi hebdomadaire.")
+        for text in phrases:
+            with self.subTest(text=text):
+                result = self.classify_with_time(text, False)
+                self.assertTrue(result["features"]["recurrence_regex_match"])
+                self.assertTrue(result["features"]["has_temporal_signal"])
+                self.assertFalse(result["features"]["duckling_has_time"])
+                self.assertEqual("allow", result["decision"])
+                self.assertEqual("request_with_temporal_signal", result["reason"])
+
+        # "heures" is a duration word, not one of the recurrence grains.
+        hours = self.classify_with_time("Rappelle-moi toutes les heures.", False)
+        self.assertFalse(hours["features"]["recurrence_regex_match"])
+        self.assertFalse(hours["features"]["has_temporal_signal"])
+        self.assertEqual("clarify", hours["decision"])
+        self.assertEqual("request_without_temporal_signal", hours["reason"])
+
+    def test_french_clock_and_calendar_words_without_duckling(self):
+        phrases = [
+            "demain",
+            "demain matin",
+            "aujourd'hui",
+            "aujourd’hui",
+            "hier",
+            "lundi",
+            "lundis",
+            "lundi prochain",
+            "prochaine semaine",
+            "midi",
+            "minuit",
+            "matin",
+            "soir",
+            "après-midi",
+            "dans deux heures",
+            "dans 3 jours",
+            "l'année prochaine",
+            "année prochaine",
+            "une heure",
+            "9h",
+            "9h30",
+            "15 h",
+        ]
+        for phrase in phrases:
+            text = f"Rappelle-moi {phrase}."
+            with self.subTest(text=text):
+                result = self.classify_with_time(text, False)
+                self.assertTrue(result["features"]["has_temporal_signal"])
+                self.assertFalse(result["features"]["duckling_has_time"])
+                self.assertEqual("allow", result["decision"])
+                self.assertEqual("request_with_temporal_signal", result["reason"])
+
+    def test_french_surface_forms(self):
+        cases = [
+            ("  Rappelle-moi demain.  ", "clarify", "temporal_signal_without_clear_request"),
+            ("Rappelle-moi\ndemain", "allow", "request_with_temporal_signal"),
+            ("«Rappelle-moi demain»", "allow", "request_with_temporal_signal"),
+            ("Rappelle-moi demain 😊", "allow", "request_with_temporal_signal"),
+            ("RAPPELLE-MOI DEMAIN", "allow", "request_with_temporal_signal"),
+            ("rappelle-moi demain", "allow", "request_with_temporal_signal"),
+            ("Ne me rappelle pas demain.", "clarify", "negated_schedule_like_request_needs_intent_confirmation"),
+            ("N'oublie pas demain.", "allow", "request_with_temporal_signal"),
+            ("Pourquoi demain ?", "reject", "informational_question_not_schedule_request"),
+            ("Qu'est-ce que demain ?", "reject", "informational_question_not_schedule_request"),
+            ("Je me réveille demain.", "reject", "declarative_schedule_not_request"),
+            ("Note que le train part demain.", "reject", "declarative_schedule_not_request"),
+        ]
+        for text, expected, reason in cases:
+            with self.subTest(text=text):
+                result = self.classify_with_time(text, False)
+                self.assertEqual(expected, result["decision"], result["reason"])
+                self.assertEqual(reason, result["reason"])
+                self.assertEqual(text, result["text"])
+
+    def test_french_clock_marker_on_english_text(self):
+        # "9h" is a French clock, so these sentences take the French path.
+        # English imperatives the model already knows still count as requests.
+        # "I love 9h" does not match the French statement lexicon, so it stays
+        # a bare temporal signal instead of a declarative rejection.
+        cases = [
+            ("Remind me at 9h", "allow", "request_with_temporal_signal"),
+            ("Please remind me at 9h.", "allow", "request_with_temporal_signal"),
+            ("Can you send this at 9h?", "allow", "request_with_temporal_signal"),
+            ("Email Acme at 9h", "allow", "request_with_temporal_signal"),
+            ("Don't remind me at 9h.", "clarify", "negated_schedule_like_request_needs_intent_confirmation"),
+            ("9h", "clarify", "temporal_signal_without_clear_request"),
+            ("9h30", "clarify", "temporal_signal_without_clear_request"),
+            ("at 9 h", "clarify", "temporal_signal_without_clear_request"),
+            ("the 9h meeting", "clarify", "temporal_signal_without_clear_request"),
+            ("I love 9h", "clarify", "temporal_signal_without_clear_request"),
+            ("My backup runs at 9h.", "clarify", "temporal_signal_without_clear_request"),
+            ("What is 9h?", "reject", "informational_question_not_schedule_request"),
+        ]
+        for text, expected, reason in cases:
+            with self.subTest(text=text):
+                result = self.classify_with_time(text, False)
+                self.assertTrue(result["features"]["has_temporal_signal"])
+                self.assertFalse(result["features"]["duckling_has_time"])
+                self.assertEqual(expected, result["decision"], result["reason"])
+                self.assertEqual(reason, result["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()
