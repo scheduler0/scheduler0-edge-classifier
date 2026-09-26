@@ -173,12 +173,198 @@ SCHEDULE_ACTION_LEMMAS = {
     "meet",
 }
 
+# The loaded spaCy model is English, so French part-of-speech tags are not
+# usable (they turn "Pourquoi" and "Ne" into imperative verbs). French
+# decisions use these lexicons and the same allow/clarify/reject order.
+FRENCH_MARKER = re.compile(
+    r"[àâäçéèêëîïôùûüœæ]"
+    r"|\b\d{1,2}\s*h\d{0,2}\b"
+    r"|\btous\s+les\b|\btoutes\s+les\b"
+    r"|\bs['’]il\b|\bqu['’]est\b|\bc['’]est\b"
+    r"|\b(?:peux|pouvez|pourrais|pourriez|voudrais|aimerais|veuillez|"
+    r"rappelle|rappelez|rappeler|rappel|planifie|planifiez|planifier|"
+    r"previens|prevenez|previent|envoi\w*|programmez|annule|annuler|annulez|"
+    r"arrete|arretez|supprime|supprimez|supprimer|demain|aujourd|"
+    r"lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|rendez-vous|"
+    r"courriel|pourquoi|combien|quand|quel|quelle|quels|quelles|est-ce|"
+    r"chaque|svp|stp|oublie|oubliez|bonjour|hebdomadaire|matin|soir|soirs|"
+    r"nuit|nuits|semaine|semaines|fonctionne|calendrier|sauvegarde|ajoute|"
+    r"ajoutez|bloque|bloquez|fixez|merci)\b",
+    re.I,
+)
+
+FRENCH_INFO_QUESTION = re.compile(
+    r"^\s*(?:[àa]\s+)?"
+    r"(?:qu['’]est-ce|c['’]est\s+quoi|pourquoi|comment|quand|o[uù]|qui|"
+    r"quel(?:le)?s?|combien)\b",
+    re.I,
+)
+
+FRENCH_YESNO = re.compile(r"^\s*est-ce que\b", re.I)
+
+FRENCH_YESNO_REQUEST = re.compile(
+    r"^\s*est-ce que\s+(?:tu|vous|on)\s+"
+    r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b",
+    re.I,
+)
+
+FRENCH_EXPLAIN = re.compile(
+    r"\b(?:expliquer|explique(?:z|-moi)?|d[eé]cri(?:s|re|vez)|"
+    r"dis-moi\s+(?:pourquoi|comment|quand|o[uù]|qui))\b",
+    re.I,
+)
+
+FRENCH_POLITE = re.compile(
+    r"\b(?:s['’]il\s+(?:te|vous)\s+pla[iî]t|svp|stp|merci\s+d['’e]|veuillez|"
+    r"peux[-\s]tu|pouvez[-\s]vous|pourrais[-\s]tu|pourriez[-\s]vous|"
+    r"tu\s+peux|vous\s+pouvez|tu\s+pourrais|vous\s+pourriez|veux[-\s]tu|"
+    r"j['’]ai\s+besoin|je\s+voudrais|j['’]aimerais|je\s+veux(?!\s+dire\b)|"
+    r"je\s+souhaite|il\s+faut|nous\s+devrions|on\s+devrait|on\s+pourrait|"
+    r"nous\s+pourrions|aide[-\s]moi|aidez[-\s]moi)\b",
+    re.I,
+)
+
+FRENCH_IMPERATIVE = re.compile(
+    r"(?:^|[,:;]\s*|«\s*|\"\s*)"
+    r"(?:rappelle(?:z)?(?:-(?:moi|nous|le|la|les))?|"
+    r"pr[eé]vien[st]|pr[eé]venez|envoie(?:z)?|cr[eé]e(?:z)?|"
+    r"planifie(?:z)?|"
+    r"programme(?:z)?(?=\s+(?:la|le|les|un|une|l['’]|moi|nous|ça|ca|ce|cet|cette)\b)|"
+    r"bloque(?:z)?(?:-moi)?|ajoute(?:z)?|"
+    r"fixe(?:z)?|r[eé]serve(?:z)?|notifie(?:z)?|d[eé]place(?:z)?|"
+    r"cale(?:z)?|aide(?:z)?-moi)\b",
+    re.I,
+)
+
+FRENCH_PROPOSAL = re.compile(
+    r"\b(?:on se cale|on cale|on se bloque)\b",
+    re.I,
+)
+
+FRENCH_CANCEL_REQUEST = re.compile(
+    r"(?:^|[,:;]\s*)(?:annule(?:r|z)?|arr[eê]te(?:z)?|supprime(?:r|z)?)\b",
+    re.I,
+)
+
+# "Pense à me rappeler" is "remember to remind me", same intent as "don't forget".
+FRENCH_REMEMBER = re.compile(
+    r"(?:^|[,:;]\s*)pense(?:z)?\s+[àa]\b",
+    re.I,
+)
+
+# "Ne me préviens pas" is still a request; the "ne" keeps the verb off the
+# start-of-sentence imperative pattern.
+FRENCH_NEGATED_IMPERATIVE = re.compile(
+    r"\bne\s+(?:me\s+|nous\s+|lui\s+|leur\s+)?"
+    r"(?:rappelle(?:z)?|pr[eé]vien[st]|pr[eé]venez|envoie(?:z)?|notifie(?:z)?|"
+    r"programme(?:z)?|planifie(?:z)?|r[eé]serve(?:z)?)\s+"
+    r"(?:pas|plus|jamais)\b",
+    re.I,
+)
+
+# "fais-moi" / "mets" / "note" are requests only next to a scheduling noun.
+# Bare "Mets la table demain" is not one.
+FRENCH_LIGHT_IMPERATIVE = re.compile(
+    r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|note(?:z)?(?!\s+que\b))\b",
+    re.I,
+)
+
+FRENCH_SCHEDULE_NOUN = re.compile(
+    r"\b(?:rappels?|rendez-vous|r[eé]unions?|calendrier|notifications?|"
+    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?)\b",
+    re.I,
+)
+
+FRENCH_SCHEDULE_ACTION = re.compile(
+    r"\b(?:rappeler|rappelle(?:z)?|envoyer|envoie(?:z)?|pr[eé]venir|"
+    r"pr[eé]vien[st]|pr[eé]venez|notifier|notifie(?:z)?|planifier|"
+    r"planifie(?:z)?|programmer|programmez|cr[eé]er|cr[eé]e(?:z)?|"
+    r"r[eé]server|r[eé]serve(?:z)?|bloquer|bloque(?:z)?|ajouter|ajoute(?:z)?|"
+    r"fixer|fixe(?:z)?|d[eé]placer|d[eé]place(?:z)?|caler|cale(?:z)?)\b",
+    re.I,
+)
+
+FRENCH_FORGET = re.compile(
+    r"\bn['’]oublie(?:z)?\s+pas\b|\bne\s+pas\s+oublier\b|\boublie(?:z)?\s+pas\b",
+    re.I,
+)
+
+FRENCH_NEGATION = re.compile(
+    r"\b(?:jamais|arr[eê]te(?:z)?|annule(?:r|z)?|supprime(?:r|z)?)\b"
+    r"|\bne\b.+\b(?:pas|plus|jamais)\b"
+    r"|\bn['’]\w+\s+(?:pas|plus|jamais)\b",
+    re.I,
+)
+
+FRENCH_RECURRENCE = re.compile(
+    r"\b(?:tous|toutes)\s+les\s+"
+    r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|"
+    r"jour|semaine|mois|an|ann[eé]e|matin|apr[eè]s-midi|apres-midi|soir|nuit)s?\b"
+    r"|\bchaque\s+"
+    r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|"
+    r"jour|semaine|mois|matin|apr[eè]s-midi|apres-midi|soir|nuit|premier)\b"
+    r"|\bhebdomadaire\b",
+    re.I,
+)
+
+FRENCH_TIME = re.compile(
+    r"\b\d{1,2}\s*h\d{0,2}\b"
+    r"|\bdemain(?:\s+(?:matin|soir|apr[eè]s-midi|apres-midi))?\b"
+    r"|\baujourd['’]?hui\b"
+    r"|\bhier\b"
+    r"|\b(?:lundis?|mardis?|mercredis?|jeudis?|vendredis?|samedis?|dimanches?)"
+    r"(?:\s+prochain(?:e)?)?\b"
+    r"|\bprochaine?\s+(?:semaine|mois|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche)\b"
+    r"|\bdans\s+(?:\d+|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\s+"
+    r"(?:minutes?|heures?|jours?|semaines?|mois)\b"
+    r"|\b(?:une|deux|trois|\d+)\s+heures?\b"
+    r"|\bl['’]ann[eé]e\s+prochaine\b"
+    r"|\bann[eé]e\s+prochaine\b"
+    r"|\b(?:midi|minuit|matin|soir|apr[eè]s-midi|apres-midi)\b",
+    re.I,
+)
+
+FRENCH_STATEMENT = re.compile(
+    r"^\s*(?:j['’]|je\b|tu\b|il\b|elle\b|on\b|nous\b|ils\b|elles\b|"
+    r"mon\b|ma\b|mes\b|notre\b|nos\b|son\b|sa\b|ses\b|leur\b|leurs\b)"
+    r"|^\s*(?:le|la|les|un|une|ce|cet|cette)\s+\S+\s+"
+    r"(?:est|sont|tourne|part|d[eé]marre|demarre|s['’]ex[eé]cute|s['’]execute)\b"
+    r"|^\s*note(?:z)?\s+que\b",
+    re.I,
+)
+
+# Imperatives the English model actually knows. Used only as a fallback so a
+# French clock time ("9h") cannot swallow an otherwise English command.
+ENGLISH_IMPERATIVE_LEMMAS = {
+    "remind",
+    "email",
+    "notify",
+    "schedule",
+    "create",
+    "send",
+    "book",
+    "set",
+    "ping",
+    "message",
+    "call",
+    "text",
+    "invite",
+}
+
+
+def text_looks_french(text):
+    return bool(FRENCH_MARKER.search(text))
+
 
 def duckling_parse(text):
+    # French clock times and weekdays are missed when Duckling is pinned to
+    # en_GB, so switch locale only for text that looks French.
+    locale = "fr_FR" if text_looks_french(text) else "en_GB"
     r = requests.post(
         DUCKLING_URL,
         data={
-            "locale": "en_GB",
+            "locale": locale,
             "text": text,
             "dims": '["time","duration"]',
         },
@@ -360,6 +546,76 @@ def looks_like_info_request(doc):
     )
 
 
+def looks_like_french_info_question(text):
+    if FRENCH_INFO_QUESTION.search(text) or INFO_QUESTION.search(text):
+        return True
+    if FRENCH_YESNO.search(text) and not FRENCH_YESNO_REQUEST.search(text):
+        return True
+    # "Peux-tu m'expliquer pourquoi..." asks for information, not a schedule.
+    if (
+        FRENCH_EXPLAIN.search(text)
+        and not FRENCH_IMPERATIVE.search(text)
+        and not FRENCH_SCHEDULE_ACTION.search(text)
+    ):
+        return True
+    return False
+
+
+def looks_like_french_request(text, doc):
+    if looks_like_french_info_question(text):
+        return False
+    if FRENCH_FORGET.search(text) or FORGET_NEGATION.search(text):
+        return True
+    if (
+        FRENCH_POLITE.search(text)
+        or FRENCH_IMPERATIVE.search(text)
+        or FRENCH_PROPOSAL.search(text)
+        or FRENCH_CANCEL_REQUEST.search(text)
+        or FRENCH_REMEMBER.search(text)
+        or FRENCH_NEGATED_IMPERATIVE.search(text)
+        or (
+            FRENCH_LIGHT_IMPERATIVE.search(text)
+            and FRENCH_SCHEDULE_NOUN.search(text)
+        )
+        or FRENCH_YESNO_REQUEST.search(text)
+        or REQUEST_STARTERS.search(text)
+        or QUESTION_REQUEST.search(text)
+    ):
+        return True
+
+    root = root_token(doc)
+    if (
+        root is not None
+        and root.pos_ == "VERB"
+        and not has_subject(doc)
+        and root.lemma_.lower() in ENGLISH_IMPERATIVE_LEMMAS
+    ):
+        return True
+    return False
+
+
+def looks_like_french_declarative(text, doc):
+    if looks_like_french_request(text, doc):
+        return False
+    return bool(FRENCH_STATEMENT.search(text))
+
+
+def has_french_negation(text):
+    # "n'oublie pas de me rappeler" means "don't forget to remind me".
+    check = FRENCH_FORGET.sub(" ", text)
+    check = FORGET_NEGATION.sub(" ", check)
+    return bool(FRENCH_NEGATION.search(check) or NEGATION_PATTERN.search(check))
+
+
+def has_french_temporal_signal(text, entities):
+    return (
+        duckling_has_time(entities)
+        or bool(FRENCH_RECURRENCE.search(text))
+        or bool(FRENCH_TIME.search(text))
+        or bool(RECURRENCE_PATTERN.search(text))
+    )
+
+
 def has_negation(text, doc):
     # Strip double negations and discourse "never mind" before looking
     # for a real cancellation of the scheduling intent.
@@ -398,13 +654,26 @@ def classify(text):
     entities = duckling_parse(text)
 
     root = root_token(doc)
+    french = text_looks_french(text)
 
-    temporal = has_temporal_signal(text, entities)
-    request = looks_like_request(doc, text)
-    declarative = looks_like_declarative_statement(doc, text)
-    info_question = looks_like_info_question(text)
-    info_request = looks_like_info_request(doc)
-    negated = has_negation(text, doc)
+    if french:
+        temporal = has_french_temporal_signal(text, entities)
+        request = looks_like_french_request(text, doc)
+        declarative = looks_like_french_declarative(text, doc)
+        info_question = looks_like_french_info_question(text)
+        info_request = False  # French doesn't have info_request check yet
+        negated = has_french_negation(text)
+        recurrence = bool(
+            FRENCH_RECURRENCE.search(text) or RECURRENCE_PATTERN.search(text)
+        )
+    else:
+        temporal = has_temporal_signal(text, entities)
+        request = looks_like_request(doc, text)
+        declarative = looks_like_declarative_statement(doc, text)
+        info_question = looks_like_info_question(text)
+        info_request = looks_like_info_request(doc)
+        negated = has_negation(text, doc)
+        recurrence = bool(RECURRENCE_PATTERN.search(text))
 
     if info_question:
         decision = "reject"
@@ -445,7 +714,7 @@ def classify(text):
         "features": {
             "has_temporal_signal": temporal,
             "duckling_has_time": duckling_has_time(entities),
-            "recurrence_regex_match": bool(RECURRENCE_PATTERN.search(text)),
+            "recurrence_regex_match": recurrence,
             "looks_like_request": request,
             "looks_like_declarative": declarative,
             "looks_like_info_question": info_question,
