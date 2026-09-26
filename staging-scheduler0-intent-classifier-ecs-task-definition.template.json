@@ -34,7 +34,7 @@
                 "logDriver": "awslogs",
                 "options": {
                     "awslogs-group": "ecs/staging-scheduler0-intent-classifier-ecs-service",
-                    "awslogs-region": "us-east-1",
+                    "awslogs-region": "<AWS_REGION>",
                     "awslogs-stream-prefix": "ecs"
                 }
             },
