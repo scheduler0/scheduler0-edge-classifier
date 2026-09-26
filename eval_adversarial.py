@@ -47,6 +47,10 @@ Its implementation uses these imperfect heuristics:
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
   only -> clarify; otherwise -> reject.
+- French text is detected from diacritics, clock times like "9h", or a French
+  lexicon, then classified with the same order using French request, question,
+  negation, recurrence, and statement patterns. English spaCy tags are not
+  trusted for French. Duckling is called with locale fr_FR for that text.
 """
 
 

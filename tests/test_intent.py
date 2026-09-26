@@ -171,6 +171,62 @@ ADVERSARIAL_CASES = [
     ("This app lets me schedule meetings every Monday at 9am.", "reject", True),
     ("What if the book club meets every Monday at 9am?", "reject", True),
     ("How about my book club on Tuesday?", "reject", True),
+    # French failures found without the Claude CLI. Duckling was assumed to
+    # see a time whenever the phrase contains a date, clock, or recurrence;
+    # the English heuristics still misclassified these.
+    ("Rappelle-moi tous les lundis à 9h.", "allow", True),
+    ("Rappelle-moi tous les lundis a 9h.", "allow", True),
+    ("Envoie un récapitulatif à Acme tous les lundis à 9h.", "allow", True),
+    ("Peux-tu m'envoyer un digest tous les vendredis ?", "allow", True),
+    ("Peux-tu me prevenir demain matin ?", "allow", True),
+    ("Préviens l'équipe demain matin.", "allow", True),
+    ("Crée un rappel pour vendredi prochain à 9h.", "allow", True),
+    ("S'il vous plaît, planifiez la réunion demain à 15h.", "allow", True),
+    ("Pourriez-vous me rappeler chaque matin à 8h ?", "allow", True),
+    ("Aide-moi à programmer un point chaque lundi.", "allow", True),
+    ("Je voudrais planifier notre sync hebdomadaire tous les lundis à 10h.", "allow", True),
+    ("N'oublie pas de me rappeler la réunion de 15h.", "allow", True),
+    ("Merci de notifier l'équipe demain matin.", "allow", True),
+    ("Il faut que tu m'envoies le rapport chaque vendredi.", "allow", True),
+    ("Est-ce que tu peux réserver la salle demain à 14h ?", "allow", True),
+    ("On se cale un point tous les mardis à 11h ?", "allow", True),
+    ("Bloque-moi une heure demain après-midi.", "allow", True),
+    ("Ajoute un rappel chaque premier du mois.", "allow", True),
+    ("Programmez l'envoi du bulletin tous les soirs à 18h.", "allow", True),
+    ("Rappelle-moi dans deux heures.", "allow", True),
+    ("Fixe un rendez-vous lundi prochain à 9h30.", "allow", True),
+    ("Pense à me rappeler demain matin.", "allow", True),
+    ("Fais-moi un rappel pour demain 8h.", "allow", True),
+    ("Mets un rappel lundi prochain.", "allow", True),
+    ("Ne me préviens pas.", "clarify", False),
+    ("Je pense à la réunion de demain.", "reject", True),
+    ("Note que le train part à 7h.", "reject", True),
+    ("Notez que la réunion est demain.", "reject", True),
+    ("Mets la table demain.", "clarify", True),
+    ("Vendredi prochain à 9h.", "clarify", True),
+    ("Demain matin.", "clarify", True),
+    ("Tous les lundis à 9h.", "clarify", True),
+    ("Envoie un courriel à Jean.", "clarify", False),
+    ("Peux-tu envoyer un message à Marie ?", "clarify", False),
+    ("Planifie quelque chose.", "clarify", False),
+    ("Ne me rappelle pas tous les lundis à 9h.", "clarify", True),
+    ("Arrête de m'envoyer un digest chaque vendredi.", "clarify", True),
+    ("Annule le rappel de tous les lundis.", "clarify", True),
+    ("Ne programme plus la réunion de 15h.", "clarify", True),
+    ("J'adore me réveiller tous les lundis à 9h.", "reject", True),
+    ("Ma sauvegarde s'exécute tous les jours.", "reject", True),
+    ("Nous nous réunissons tous les vendredis à 10h.", "reject", True),
+    ("Le backup tourne chaque nuit.", "reject", True),
+    ("La facture est due vendredi.", "reject", True),
+    ("Mon train part à 7h.", "reject", True),
+    ("La standup est tous les jours à 9h30.", "reject", True),
+    ("Qu'est-ce que Kubernetes ?", "reject", False),
+    ("Quand est Pâques l'année prochaine ?", "reject", True),
+    ("Pourquoi la réunion est-elle à 9h ?", "reject", True),
+    ("Où a lieu la réunion de demain ?", "reject", True),
+    ("Qui participe au point de lundi ?", "reject", True),
+    ("Pourriez-vous m'expliquer pourquoi nous nous réunissons tous les vendredis ?", "reject", True),
+    ("Est-ce que la réunion est demain ?", "reject", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 
@@ -245,7 +301,6 @@ class IntentClassifierTests(unittest.TestCase):
         samples = [
             "Remind me tomorrow",
             "",
-            "Rappelle-moi demain",
             "每星期一提醒我",
             "Напомни мне завтра",
         ]
@@ -318,6 +373,16 @@ class IntentClassifierTests(unittest.TestCase):
                     f"{result['decision']!r} ({result['reason']})"
                 ),
             )
+
+    def test_duckling_locale_follows_language(self):
+        with patch("intent.requests.post") as post:
+            post.return_value.json.return_value = []
+            post.return_value.raise_for_status.return_value = None
+            classify("Rappelle-moi demain matin.")
+            classify("Remind me tomorrow morning.")
+
+        locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
+        self.assertEqual(["fr_FR", "en_GB"], locales)
 
 
 if __name__ == "__main__":
