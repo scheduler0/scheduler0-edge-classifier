@@ -45,6 +45,32 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ vars.AWS_REGION }}
 
+    - name: Get AWS Account ID
+      id: aws-account
+      run: |
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "account_id=${AWS_ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
+        echo "AWS Account ID: ${AWS_ACCOUNT_ID}"
+
+    - name: Generate task definition from template
+      run: |
+        set -euo pipefail
+        TEMPLATE_FILE="${ENV_NAME}-scheduler0-intent-classifier-ecs-task-definition.template.json"
+        OUTPUT_FILE="${ECS_TASK_DEFINITION}"
+        
+        if [ ! -f "${TEMPLATE_FILE}" ]; then
+          echo "ERROR: Template file ${TEMPLATE_FILE} not found"
+          exit 1
+        fi
+        
+        echo "Generating ${OUTPUT_FILE} from ${TEMPLATE_FILE}"
+        sed -e "s|<AWS_ACCOUNT_ID>|${{ steps.aws-account.outputs.account_id }}|g" \
+            -e "s|<AWS_REGION>|${AWS_REGION}|g" \
+            "${TEMPLATE_FILE}" > "${OUTPUT_FILE}"
+        
+        echo "Task definition generated successfully"
+        cat "${OUTPUT_FILE}"
+
     # Runtime config comes from SSM / the task definition (Doppler syncs SSM
     # natively); the deploy needs nothing from Doppler, so the CLI is not installed.
 
