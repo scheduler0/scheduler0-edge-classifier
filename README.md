@@ -277,6 +277,12 @@ This repository includes **Bugbot** - an automated code review and fixing system
 - 💬 **Posts detailed reports** with actionable recommendations
 - 🚀 **Integrates with Cursor** Cloud Agents for advanced fixes
 
+### Documentation
+
+- **[Quick Start Guide](BUGBOT_QUICKSTART.md)** - For developers using Bugbot daily
+- **[Setup Guide](BUGBOT_SETUP.md)** - Complete configuration and integration instructions
+- **[Admin Guide](BUGBOT_ADMIN.md)** - For repository administrators and team leads
+
 ### Quick Start
 
 Bugbot runs automatically on all PRs. To manually trigger auto-fix, comment on a PR:
