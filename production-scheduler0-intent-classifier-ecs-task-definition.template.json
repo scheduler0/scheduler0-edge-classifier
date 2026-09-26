@@ -1,0 +1,80 @@
+{
+    "containerDefinitions": [
+        {
+            "name": "production-scheduler0-intent-classifier",
+            "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/production-scheduler0-intent-classifier:latest",
+            "cpu": 1024,
+            "memory": 2048,
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "ENV",
+                    "value": "production"
+                }
+            ],
+            "mountPoints": [
+                {
+                    "sourceVolume": "duckling-bin",
+                    "containerPath": "/duckling",
+                    "readOnly": true
+                },
+                {
+                    "sourceVolume": "nlp-venv",
+                    "containerPath": "/opt/scheduler0-nlp",
+                    "readOnly": true
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "ecs/production-scheduler0-intent-classifier-ecs-service",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:8080/healthz || exit 1"],
+                "interval": 30,
+                "timeout": 10,
+                "retries": 3,
+                "startPeriod": 300
+            },
+            "systemControls": []
+        }
+    ],
+    "family": "production_scheduler0-intent-classifier",
+    "networkMode": "awsvpc",
+    "volumes": [
+        {
+            "name": "duckling-bin",
+            "host": {
+                "sourcePath": "/opt/duckling"
+            }
+        },
+        {
+            "name": "nlp-venv",
+            "host": {
+                "sourcePath": "/opt/scheduler0-nlp"
+            }
+        }
+    ],
+    "placementConstraints": [
+        {
+            "type": "memberOf",
+            "expression": "attribute:scheduler0.intent-classifier == true"
+        }
+    ],
+    "requiresCompatibilities": [
+        "EC2"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role",
+    "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role"
+}

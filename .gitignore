@@ -7,3 +7,26 @@ venv/
 *.egg-info/
 dist/
 build/
+
+# AWS task definitions with account-specific values
+*-ecs-task-definition.json
+!*-ecs-task-definition.template.json
+
+# Local development
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Duckling
+duckling.log
