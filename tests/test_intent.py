@@ -121,6 +121,51 @@ RECURRENCE_GRAINS = [
 ADVERSARIAL_CASES = [
     ("Please don't forget to remind me about the 3pm meeting", 'allow', True),
     ('What about scheduling our weekly sync every Monday at 10am?', 'allow', True),
+    # Requests with a greeting or acknowledgment before the ask.
+    ("Hi, can you schedule a sync every Monday at 10am?", "allow", True),
+    ("Hey can you remind me tomorrow at 9am", "allow", True),
+    ("Thanks, but can you move it to Thursday at 2?", "allow", True),
+    # Proposals and first-person scheduling intents.
+    ("Let's schedule a meeting for Friday at 3.", "allow", True),
+    ("Let us meet tomorrow at 3pm.", "allow", True),
+    ("How about we meet tomorrow at 4?", "allow", True),
+    ("What if we move the standup to 10am every day?", "allow", True),
+    ("Could we schedule a review for next Wednesday at 2pm?", "allow", True),
+    ("Shall we meet tomorrow at 3?", "allow", True),
+    ("Could someone remind me tomorrow at 9?", "allow", True),
+    ("Can the team meet every Friday at 10am?", "allow", True),
+    ("We should meet every Monday at 9am.", "allow", True),
+    ("I need this done by Friday at 5pm.", "allow", True),
+    ("When should we meet next Tuesday at 3pm?", "allow", True),
+    ("I'd like to schedule a call for Thursday at 4pm.", "allow", True),
+    ("I would like you to remind me every Monday at 9am.", "allow", True),
+    ("I want a reminder every Monday at 9am.", "allow", True),
+    ("I need a meeting tomorrow at 3pm.", "allow", True),
+    ("Would it be possible to meet tomorrow at 9?", "allow", True),
+    ("Do you mind scheduling a sync tomorrow at 3?", "allow", True),
+    ("I was hoping you could book a room tomorrow at 2.", "allow", True),
+    # Imperatives spaCy mistags, and embedded subjects that are not the root.
+    ("Book conference room B for tomorrow at 10.", "allow", True),
+    ("Snooze the reminder until tomorrow morning.", "allow", True),
+    ("Circle back on this tomorrow morning.", "allow", True),
+    ("Set this up so I get a nudge tomorrow morning.", "allow", True),
+    ("Remind me every Monday because I forget.", "allow", True),
+    # Negation false positives: visit, double negation, discourse marker.
+    ("Stop by my office tomorrow at 3.", "allow", True),
+    ("Please stop by the office every Monday at 9am.", "allow", True),
+    ("Please do not let me forget the 4pm demo.", "allow", True),
+    ("Never mind, remind me tomorrow at 9 instead.", "allow", True),
+    ("Please stop emailing me every Monday.", "clarify", True),
+    # Informational asks that mention a time but do not create a schedule.
+    ("Can you tell me when the meeting is tomorrow?", "reject", True),
+    ("Can you explain why we meet every Friday?", "reject", True),
+    ("Please tell me about the Monday meeting.", "reject", True),
+    ("Tell me the agenda for tomorrow's meeting.", "reject", True),
+    ("Please describe our schedule every Monday.", "reject", True),
+    ("How do I schedule a meeting for Friday?", "reject", True),
+    ("What if it rains every Monday?", "reject", True),
+    ("Book club meets every Monday at 9am.", "reject", True),
+    ("I love to schedule meetings every Monday.", "reject", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 
