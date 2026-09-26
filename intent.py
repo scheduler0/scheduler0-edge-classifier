@@ -333,7 +333,12 @@ def looks_like_info_question(text):
     if not INFO_QUESTION.search(text):
         return False
     # Scheduling proposals that merely open with a wh-word.
-    if has_scheduling_proposal(text) or SCHEDULING_PROPOSAL_QUESTION.search(text):
+    if has_scheduling_proposal(text):
+        return False
+    # "should we meet" patterns are proposals only when they specify a time/date
+    # "When should we meet?" is informational; "When should we meet Tuesday at 3?" is a proposal
+    match = SCHEDULING_PROPOSAL_QUESTION.search(text)
+    if match and len(text[match.end():].strip(' ?')) > 0:
         return False
     return True
 
@@ -359,9 +364,20 @@ def has_negation(text, doc):
     # Strip double negations and discourse "never mind" before looking
     # for a real cancellation of the scheduling intent.
     check_text = FORGET_NEGATION.sub(" ", text)
-    check_text = NEVER_MIND.sub(" ", check_text)
-    if NEGATION_PATTERN.search(check_text):
+    check_text_after_never_mind = NEVER_MIND.sub(" ", check_text)
+    if NEGATION_PATTERN.search(check_text_after_never_mind):
         return True
+
+    # "Never mind X" without a subsequent request is a cancellation
+    never_mind_match = NEVER_MIND.search(text)
+    if never_mind_match:
+        # Check if there's a clear request after "never mind"
+        after_text = text[never_mind_match.end():].strip()
+        # If it continues with a comma and more substantial content (request), it's a retraction + new request
+        # If it's just "the X reminder" or similar, it's a cancellation
+        if after_text and not after_text.startswith(','):
+            # "Never mind the Monday reminder" - cancellation
+            return True
 
     forget_request = bool(FORGET_NEGATION.search(text))
     never_mind = bool(NEVER_MIND.search(text))
