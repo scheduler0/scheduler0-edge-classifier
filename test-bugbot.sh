@@ -18,7 +18,11 @@ echo
 
 # Check Python version
 echo "1️⃣ Checking Python version..."
-python --version || python3 --version
+PYTHON_CMD="python3"
+if ! command -v python3 &> /dev/null; then
+    PYTHON_CMD="python"
+fi
+$PYTHON_CMD --version
 echo "   ✅ Python available"
 echo
 
@@ -27,8 +31,8 @@ echo "2️⃣ Checking dependencies file..."
 if [ -f "requirements.txt" ]; then
     echo "   ✅ requirements.txt found"
     echo "   Installing dependencies..."
-    pip install -q -r requirements.txt
-    python -m spacy download en_core_web_sm --quiet
+    $PYTHON_CMD -m pip install -q -r requirements.txt
+    $PYTHON_CMD -m spacy download en_core_web_sm --quiet
     echo "   ✅ Dependencies installed"
 else
     echo "   ❌ requirements.txt not found"
@@ -51,7 +55,7 @@ echo
 # Run tests
 echo "4️⃣ Running tests..."
 set +e
-python -m unittest discover -s tests -v 2>&1 | tee test_output.txt
+$PYTHON_CMD -m unittest discover -s tests -v 2>&1 | tee test_output.txt
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
@@ -71,7 +75,7 @@ echo "5️⃣ Checking Python syntax..."
 set +e
 SYNTAX_ERRORS=0
 for file in $(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*"); do
-    python -m py_compile "$file" 2>&1
+    $PYTHON_CMD -m py_compile "$file" 2>&1
     if [ $? -ne 0 ]; then
         SYNTAX_ERRORS=$((SYNTAX_ERRORS + 1))
     fi
