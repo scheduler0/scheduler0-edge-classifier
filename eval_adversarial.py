@@ -29,8 +29,10 @@ The classifier assigns exactly one decision:
   questions and declarative statements about schedules.
 
 Its implementation uses these imperfect heuristics:
-- A temporal signal is a Duckling time/duration entity or the regex
-  "every|each" followed by a weekday/day/week/month/year/time-of-day.
+- A temporal signal is a Duckling time/duration entity, the regex
+  "every|each" followed by a weekday/day/week/month/year/hour/minute or
+  time-of-day (optionally "other", "single", "half", or a small number),
+  or a bare recurrence adverb such as daily, hourly, weekly, or nightly.
 - A request is detected from polite phrases anywhere in the text ("can you",
   "please", "let's", "could we", "I'd like to schedule", "I want a reminder",
   "how about" plus a scheduling verb), from a sentence-initial command, or
@@ -41,8 +43,10 @@ Its implementation uses these imperfect heuristics:
 - Asks whose root verb is tell/explain/describe are rejected even if they
   mention a time, unless they complement a scheduling verb ("tell me to book").
 - don't/do not/dont/never/stop/cancel/remove plus a temporal signal clarifies.
-  "stop by", "don't forget", "don't let me forget", and discourse "never mind"
-  are not treated as canceling the request.
+  "stop by", "don't forget", "don't let me forget", "don't let me miss",
+  negation inside the reminder ("remind me not to miss"), a hedge such as
+  "not sure" or "not urgent", and discourse "never mind" are not treated as
+  canceling the request.
 - Decision order: informational question or informational request -> reject;
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
