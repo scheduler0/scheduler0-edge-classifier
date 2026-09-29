@@ -463,6 +463,10 @@ _ENGLISH_SYNTAX = re.compile(
     r"tomorrow|today|tonight|meeting|schedule|email|i)\b",
     re.I,
 )
+_ENGLISH_TEMPORAL = re.compile(
+    r"\b(?:tomorrow|today|tonight|yesterday|every|each|daily|weekly|monthly)\b",
+    re.I,
+)
 
 FRENCH_INFO_QUESTION = re.compile(
     r"^\s*(?:[àa]\s+)?"
@@ -674,14 +678,21 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 def text_looks_french(text):
     if not FRENCH_MARKER.search(text):
         return False
-    # "9h" clock time is French on its own, even in English-looking text.
-    if _CLOCK_TIME.search(text):
-        return True
-    # "café" / "résumé" loanwords are not French on their own.
-    # Keep the English path when the remaining words are English syntax.
-    stripped = _DIACRITIC.sub("", text)
+    # English temporal words (tomorrow, today, etc.) override "9h" or loanwords.
+    # Strip diacritics and clock times to check what remains.
+    stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    if _ENGLISH_TEMPORAL.search(stripped):
+        return False
+    # French lexicon words are strong evidence of French.
     if _FRENCH_LEXICON.search(stripped):
         return True
+    # At this point: FRENCH_MARKER present (9h or diacritic), no English temporal,
+    # no French lexicon. Default to French to let FRENCH_TIME regex handle "9h".
+    # Exception: loanwords like "café" in pure English sentences.
+    if _CLOCK_TIME.search(text):
+        # "9h" is a strong French temporal signal, keep as French
+        return True
+    # Diacritic alone in English context (café, résumé) → check for English
     if _ENGLISH_SYNTAX.search(text):
         return False
     return True
