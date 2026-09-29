@@ -273,6 +273,79 @@ ADVERSARIAL_CASES = [
     ("On se voit demain à 9h ?", "allow", True),
     ("Ça te dit demain à 10h ?", "allow", True),
     ("Dis-moi pourquoi la réunion est demain.", "reject", True),
+    # Copular command-words and event headlines are statements.
+    ("Email is down.", "reject", False),
+    ("Email is down every Monday.", "reject", False),
+    ("Schedule is full every Monday.", "reject", False),
+    ("Create is a verb we use every Monday.", "reject", False),
+    ("Set up is hard every Monday.", "reject", False),
+    ("Schedule changes every Monday.", "reject", False),
+    ("Email volume doubles every Monday.", "reject", False),
+    ("Email invoices every Monday.", "allow", False),
+    # Notes and lookups mention a calendar but do not create one.
+    ("Note that the meeting is tomorrow.", "reject", True),
+    ("Please note that we meet every Monday.", "reject", False),
+    ("Help me understand why we meet every Monday.", "reject", False),
+    ("Can you let me know the time of tomorrow's meeting?", "reject", True),
+    # Polite challenges, first-person modals, and soft deadlines.
+    ("Couldn't you remind me tomorrow at 9?", "allow", True),
+    ("Won't you schedule the review for Friday at 2?", "allow", True),
+    ("Can't you remind me tomorrow at 9?", "allow", True),
+    ("Might you book a room tomorrow at 3?", "allow", True),
+    ("Could I book a room tomorrow at 3?", "allow", True),
+    ("May I schedule a call for Thursday at 4?", "allow", True),
+    ("Can I get a reminder tomorrow at 9?", "allow", True),
+    ("Shall I book the room for tomorrow at 2?", "allow", True),
+    ("Should I schedule the review for Thursday at 4?", "allow", True),
+    ("Would it be okay to meet tomorrow at 3?", "allow", True),
+    ("I'd appreciate a reminder every Monday at 9.", "allow", True),
+    ("I should be reminded every Monday.", "allow", False),
+    ("Be sure to email me the recap tomorrow morning.", "allow", True),
+    ("Block 30 minutes tomorrow afternoon.", "allow", True),
+    ("Clear my calendar tomorrow afternoon.", "allow", True),
+    ("I need this scheduled for Friday at 3.", "allow", True),
+    ("I need this by Friday at 5.", "allow", True),
+    ("We could meet tomorrow at 3.", "allow", True),
+    ("We can meet every Friday at 10.", "allow", True),
+    ("We ought to meet tomorrow at 3.", "allow", True),
+    ("We have to meet Friday at 10.", "allow", True),
+    ("We can meet the deadline every Friday.", "reject", False),
+    ("It would be great if you reminded me tomorrow at 3.", "allow", True),
+    ("I wish we could meet tomorrow at 3.", "allow", True),
+    ("Mind meeting tomorrow at 3?", "allow", True),
+    ("How about meeting tomorrow at 3?", "allow", True),
+    ("How about a call tomorrow at 4?", "allow", True),
+    ("When can you remind me tomorrow?", "allow", True),
+    ("When can you remind me?", "reject", False),
+    ("Quit reminding me every day.", "clarify", False),
+    # English sentences that only look French because of "9h" or a loanword.
+    ("Let's meet tomorrow at 9h.", "allow", True),
+    ("I'd like to schedule a call at 9h.", "allow", True),
+    ("We should meet tomorrow at 9h.", "allow", True),
+    ("How about we meet at 9h?", "allow", True),
+    ("Meet me at the café tomorrow at 9.", "allow", True),
+    ("The café opens every Monday at 9.", "reject", True),
+    ("My résumé is due every Monday.", "reject", False),
+    ("I love the café every Monday.", "reject", False),
+    # French proposals and statements the lexicon still missed.
+    ("Il faudrait qu'on se voie demain à 9h.", "allow", True),
+    ("Souviens-toi de la réunion demain.", "allow", True),
+    ("La réunion de demain est annulée.", "reject", True),
+    ("Peux-tu me dire l'heure de la réunion de demain ?", "reject", True),
+    ("Il faudrait partir demain.", "reject", True),
+    # Colloquial proposals that name a time without "can you" / "let's".
+    ("Why don't we do Thursday at 3?", "allow", True),
+    ("How about we do Thursday at 3?", "allow", True),
+    ("What do you say we meet tomorrow at 3?", "allow", True),
+    ("I'd love to meet tomorrow at 3.", "allow", True),
+    ("I'd love a meeting tomorrow at 3.", "allow", True),
+    ("I wanted to schedule a call tomorrow.", "allow", True),
+    ("I'm down to meet tomorrow at 3.", "allow", True),
+    ("Suppose we meet tomorrow at 3.", "allow", True),
+    ("Why don't we do the laundry every Monday?", "reject", False),
+    ("Help me see why we meet every Monday.", "reject", False),
+    ("Does Thursday at 2 work for a call?", "clarify", True),
+    ("Ça serait possible de se voir demain ?", "allow", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 
@@ -426,9 +499,11 @@ class IntentClassifierTests(unittest.TestCase):
             post.return_value.raise_for_status.return_value = None
             classify("Rappelle-moi demain matin.")
             classify("Remind me tomorrow morning.")
+            classify("Remind me tomorrow at 9h.")
+            classify("The café opens every Monday.")
 
         locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
-        self.assertEqual(["fr_FR", "en_GB"], locales)
+        self.assertEqual(["fr_FR", "en_GB", "en_GB", "en_GB"], locales)
 
 
 if __name__ == "__main__":
