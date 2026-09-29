@@ -674,9 +674,12 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 def text_looks_french(text):
     if not FRENCH_MARKER.search(text):
         return False
-    # "9h" and loanwords such as "café" / "résumé" are not French on their own.
+    # "9h" clock time is French on its own, even in English-looking text.
+    if _CLOCK_TIME.search(text):
+        return True
+    # "café" / "résumé" loanwords are not French on their own.
     # Keep the English path when the remaining words are English syntax.
-    stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    stripped = _DIACRITIC.sub("", text)
     if _FRENCH_LEXICON.search(stripped):
         return True
     if _ENGLISH_SYNTAX.search(text):
