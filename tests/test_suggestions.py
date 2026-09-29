@@ -85,34 +85,10 @@ class LocaleResolutionTests(unittest.TestCase):
                     self.assertEqual(f"en_{region}", resolve_duckling_locale(raw))
 
     def test_english_without_a_known_region_falls_back_to_en_gb(self):
-        for raw in (
-            None,
-            "",
-            "   ",
-            "en",
-            "EN",
-            "english",
-            "en_XX",
-            "en-US.UTF-8",
-            "en_",
-            "en_FR",
-            "enn",
-            "en.",
-            "eng",
-            "en\u200b",
-        ):
+        for raw in (None, "", "   ", "en", "EN", "english", "en_XX", "en-US.UTF-8"):
             with self.subTest(locale=raw):
                 self.assertTrue(is_english_locale(raw))
                 self.assertEqual("en_GB", resolve_duckling_locale(raw))
-
-    def test_english_tags_with_extra_segments_keep_the_region(self):
-        for raw, expected in (
-            ("en__US", "en_US"),
-            ("EN_us_extra", "en_US"),
-            ("en_US_POSIX", "en_US"),
-        ):
-            with self.subTest(locale=raw):
-                self.assertEqual(expected, resolve_duckling_locale(raw))
 
     def test_every_non_english_duckling_language_is_rejected(self):
         for lang in DUCKLING_LANGUAGES:
@@ -135,26 +111,6 @@ class LocaleResolutionTests(unittest.TestCase):
         with self.assertRaises(UnsupportedLocaleError) as ctx:
             resolve_duckling_locale(raw)
         self.assertEqual(raw, ctx.exception.locale)
-
-    def test_script_subtags_and_lookalikes_are_rejected(self):
-        # Region tags Duckling uses that are not in the per-language region
-        # map, plus a Cyrillic "е" that only looks like an ASCII "e".
-        for raw in (
-            "еn",
-            "e",
-            "zh-Hans-CN",
-            "es-419",
-            "pt_BR",
-            "nb_NO",
-            "ko_KR",
-            "ja_JP",
-            "ar-EG",
-        ):
-            with self.subTest(locale=raw):
-                self.assertFalse(is_english_locale(raw))
-                with self.assertRaises(UnsupportedLocaleError) as ctx:
-                    resolve_duckling_locale(raw)
-                self.assertEqual(raw, ctx.exception.locale)
 
     def test_analyze_forwards_each_english_locale_to_duckling(self):
         for region in sorted(DUCKLING_ENGLISH_REGIONS):

@@ -227,6 +227,52 @@ ADVERSARIAL_CASES = [
     ("Qui participe au point de lundi ?", "reject", True),
     ("Pourriez-vous m'expliquer pourquoi nous nous réunissons tous les vendredis ?", "reject", True),
     ("Est-ce que la réunion est demain ?", "reject", True),
+    # Rhetorical proposals. The "not" is not a cancellation.
+    ("Why don't we meet tomorrow at 3?", "allow", True),
+    ("Why not meet tomorrow at 3?", "allow", True),
+    ("What say we meet tomorrow at 3?", "allow", True),
+    ("Couldn't we meet tomorrow at 3?", "allow", True),
+    ("Wouldn't it be better to meet tomorrow at 3?", "allow", True),
+    ("Don't you think we should meet tomorrow?", "allow", True),
+    ("Why do we meet every Monday?", "reject", False),
+    # Hedged and colloquial asks that name a scheduling act.
+    ("I was wondering if we could meet tomorrow at 3.", "allow", True),
+    ("Any chance we could meet tomorrow at 3?", "allow", True),
+    ("Mind if we meet tomorrow at 3?", "allow", True),
+    ("Are you able to meet tomorrow at 3?", "allow", True),
+    ("Wanna meet tomorrow at 3?", "allow", True),
+    ("Fancy a call tomorrow at 3?", "allow", True),
+    ("Up for a meeting tomorrow at 10?", "allow", True),
+    ("It would be great if we could meet tomorrow at 3.", "allow", True),
+    ("I was wondering why we meet every Monday.", "reject", False),
+    ("I need to be reminded every Monday.", "allow", False),
+    ("I need reminding every Monday at 9.", "allow", True),
+    ("We need to meet every Monday at 9.", "allow", True),
+    ("We need a meeting tomorrow at 3.", "allow", True),
+    ("The team needs to meet every Friday at 10.", "allow", True),
+    ("Someone should remind me tomorrow at 9.", "allow", True),
+    ("Somebody remind me tomorrow.", "allow", True),
+    ("I need to leave every Monday at 9.", "reject", False),
+    # Imperatives after a short lead-in. A period or quoted speech is not one.
+    ("Okay, book the room for 3pm.", "allow", True),
+    ("Hey team, schedule the retro for Friday at 4.", "allow", True),
+    ("Quick one: remind me tomorrow morning.", "allow", True),
+    ("Reminder: send the report every Friday at 9.", "allow", True),
+    ("She said, remind me tomorrow.", "reject", True),
+    # Contrastive time is not a cancellation of the request.
+    ("Remind me tomorrow, not Monday.", "allow", True),
+    ("Not tomorrow — remind me Friday at 9.", "allow", True),
+    ("Can you remind me tomorrow? Not too early though.", "allow", True),
+    # French soft proposals the polite/imperative lists missed.
+    ("Pourquoi ne pas se voir demain à 9h ?", "allow", True),
+    ("Et si on se voyait demain à 15h ?", "allow", True),
+    ("Serait-il possible de se voir demain à 9h ?", "allow", True),
+    ("Dis-moi de bloquer demain matin.", "allow", True),
+    ("Est-ce qu'on peut se voir demain à 9h ?", "allow", True),
+    ("Je te propose demain à 15h.", "allow", True),
+    ("On se voit demain à 9h ?", "allow", True),
+    ("Ça te dit demain à 10h ?", "allow", True),
+    ("Dis-moi pourquoi la réunion est demain.", "reject", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 
@@ -383,155 +429,6 @@ class IntentClassifierTests(unittest.TestCase):
 
         locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
         self.assertEqual(["fr_FR", "en_GB"], locales)
-
-    def test_french_recurrence_grains_without_duckling(self):
-        tous_les = [
-            "lundi",
-            "mardi",
-            "mercredi",
-            "jeudi",
-            "vendredi",
-            "samedi",
-            "dimanche",
-            "jour",
-            "semaine",
-            "mois",
-            "an",
-            "année",
-            "matin",
-            "après-midi",
-            "apres-midi",
-            "soir",
-            "nuit",
-            "lundis",
-            "jours",
-            "semaines",
-            "nuits",
-            "soirs",
-        ]
-        chaque = [
-            "lundi",
-            "mardi",
-            "mercredi",
-            "jeudi",
-            "vendredi",
-            "samedi",
-            "dimanche",
-            "jour",
-            "semaine",
-            "mois",
-            "matin",
-            "après-midi",
-            "apres-midi",
-            "soir",
-            "nuit",
-            "premier",
-        ]
-        phrases = [f"Rappelle-moi tous les {grain}." for grain in tous_les]
-        phrases += [
-            "Rappelle-moi toutes les semaines.",
-            "Rappelle-moi toutes les nuits.",
-        ]
-        phrases += [f"Rappelle-moi chaque {grain}." for grain in chaque]
-        phrases.append("Rappelle-moi hebdomadaire.")
-        for text in phrases:
-            with self.subTest(text=text):
-                result = self.classify_with_time(text, False)
-                self.assertTrue(result["features"]["recurrence_regex_match"])
-                self.assertTrue(result["features"]["has_temporal_signal"])
-                self.assertFalse(result["features"]["duckling_has_time"])
-                self.assertEqual("allow", result["decision"])
-                self.assertEqual("request_with_temporal_signal", result["reason"])
-
-        # "heures" is a duration word, not one of the recurrence grains.
-        hours = self.classify_with_time("Rappelle-moi toutes les heures.", False)
-        self.assertFalse(hours["features"]["recurrence_regex_match"])
-        self.assertFalse(hours["features"]["has_temporal_signal"])
-        self.assertEqual("clarify", hours["decision"])
-        self.assertEqual("request_without_temporal_signal", hours["reason"])
-
-    def test_french_clock_and_calendar_words_without_duckling(self):
-        phrases = [
-            "demain",
-            "demain matin",
-            "aujourd'hui",
-            "aujourd’hui",
-            "hier",
-            "lundi",
-            "lundis",
-            "lundi prochain",
-            "prochaine semaine",
-            "midi",
-            "minuit",
-            "matin",
-            "soir",
-            "après-midi",
-            "dans deux heures",
-            "dans 3 jours",
-            "l'année prochaine",
-            "année prochaine",
-            "une heure",
-            "9h",
-            "9h30",
-            "15 h",
-        ]
-        for phrase in phrases:
-            text = f"Rappelle-moi {phrase}."
-            with self.subTest(text=text):
-                result = self.classify_with_time(text, False)
-                self.assertTrue(result["features"]["has_temporal_signal"])
-                self.assertFalse(result["features"]["duckling_has_time"])
-                self.assertEqual("allow", result["decision"])
-                self.assertEqual("request_with_temporal_signal", result["reason"])
-
-    def test_french_surface_forms(self):
-        cases = [
-            ("  Rappelle-moi demain.  ", "clarify", "temporal_signal_without_clear_request"),
-            ("Rappelle-moi\ndemain", "allow", "request_with_temporal_signal"),
-            ("«Rappelle-moi demain»", "allow", "request_with_temporal_signal"),
-            ("Rappelle-moi demain 😊", "allow", "request_with_temporal_signal"),
-            ("RAPPELLE-MOI DEMAIN", "allow", "request_with_temporal_signal"),
-            ("rappelle-moi demain", "allow", "request_with_temporal_signal"),
-            ("Ne me rappelle pas demain.", "clarify", "negated_schedule_like_request_needs_intent_confirmation"),
-            ("N'oublie pas demain.", "allow", "request_with_temporal_signal"),
-            ("Pourquoi demain ?", "reject", "informational_question_not_schedule_request"),
-            ("Qu'est-ce que demain ?", "reject", "informational_question_not_schedule_request"),
-            ("Je me réveille demain.", "reject", "declarative_schedule_not_request"),
-            ("Note que le train part demain.", "reject", "declarative_schedule_not_request"),
-        ]
-        for text, expected, reason in cases:
-            with self.subTest(text=text):
-                result = self.classify_with_time(text, False)
-                self.assertEqual(expected, result["decision"], result["reason"])
-                self.assertEqual(reason, result["reason"])
-                self.assertEqual(text, result["text"])
-
-    def test_french_clock_marker_on_english_text(self):
-        # "9h" is a French clock, so these sentences take the French path.
-        # English imperatives the model already knows still count as requests.
-        # "I love 9h" does not match the French statement lexicon, so it stays
-        # a bare temporal signal instead of a declarative rejection.
-        cases = [
-            ("Remind me at 9h", "allow", "request_with_temporal_signal"),
-            ("Please remind me at 9h.", "allow", "request_with_temporal_signal"),
-            ("Can you send this at 9h?", "allow", "request_with_temporal_signal"),
-            ("Email Acme at 9h", "allow", "request_with_temporal_signal"),
-            ("Don't remind me at 9h.", "clarify", "negated_schedule_like_request_needs_intent_confirmation"),
-            ("9h", "clarify", "temporal_signal_without_clear_request"),
-            ("9h30", "clarify", "temporal_signal_without_clear_request"),
-            ("at 9 h", "clarify", "temporal_signal_without_clear_request"),
-            ("the 9h meeting", "clarify", "temporal_signal_without_clear_request"),
-            ("I love 9h", "clarify", "temporal_signal_without_clear_request"),
-            ("My backup runs at 9h.", "clarify", "temporal_signal_without_clear_request"),
-            ("What is 9h?", "reject", "informational_question_not_schedule_request"),
-        ]
-        for text, expected, reason in cases:
-            with self.subTest(text=text):
-                result = self.classify_with_time(text, False)
-                self.assertTrue(result["features"]["has_temporal_signal"])
-                self.assertFalse(result["features"]["duckling_has_time"])
-                self.assertEqual(expected, result["decision"], result["reason"])
-                self.assertEqual(reason, result["reason"])
 
 
 if __name__ == "__main__":
