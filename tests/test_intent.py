@@ -227,7 +227,161 @@ ADVERSARIAL_CASES = [
     ("Qui participe au point de lundi ?", "reject", True),
     ("Pourriez-vous m'expliquer pourquoi nous nous réunissons tous les vendredis ?", "reject", True),
     ("Est-ce que la réunion est demain ?", "reject", True),
+    # Rhetorical proposals. The "not" is not a cancellation.
+    ("Why don't we meet tomorrow at 3?", "allow", True),
+    ("Why not meet tomorrow at 3?", "allow", True),
+    ("What say we meet tomorrow at 3?", "allow", True),
+    ("Couldn't we meet tomorrow at 3?", "allow", True),
+    ("Wouldn't it be better to meet tomorrow at 3?", "allow", True),
+    ("Don't you think we should meet tomorrow?", "allow", True),
+    ("Why do we meet every Monday?", "reject", False),
+    # Hedged and colloquial asks that name a scheduling act.
+    ("I was wondering if we could meet tomorrow at 3.", "allow", True),
+    ("Any chance we could meet tomorrow at 3?", "allow", True),
+    ("Mind if we meet tomorrow at 3?", "allow", True),
+    ("Are you able to meet tomorrow at 3?", "allow", True),
+    ("Wanna meet tomorrow at 3?", "allow", True),
+    ("Fancy a call tomorrow at 3?", "allow", True),
+    ("Up for a meeting tomorrow at 10?", "allow", True),
+    ("It would be great if we could meet tomorrow at 3.", "allow", True),
+    ("I was wondering why we meet every Monday.", "reject", False),
+    ("I need to be reminded every Monday.", "allow", False),
+    ("I need reminding every Monday at 9.", "allow", True),
+    ("We need to meet every Monday at 9.", "allow", True),
+    ("We need a meeting tomorrow at 3.", "allow", True),
+    ("The team needs to meet every Friday at 10.", "allow", True),
+    ("Someone should remind me tomorrow at 9.", "allow", True),
+    ("Somebody remind me tomorrow.", "allow", True),
+    ("I need to leave every Monday at 9.", "reject", False),
+    # Imperatives after a short lead-in. A period or quoted speech is not one.
+    ("Okay, book the room for 3pm.", "allow", True),
+    ("Hey team, schedule the retro for Friday at 4.", "allow", True),
+    ("Quick one: remind me tomorrow morning.", "allow", True),
+    ("Reminder: send the report every Friday at 9.", "allow", True),
+    ("She said, remind me tomorrow.", "reject", True),
+    # Contrastive time is not a cancellation of the request.
+    ("Remind me tomorrow, not Monday.", "allow", True),
+    ("Not tomorrow — remind me Friday at 9.", "allow", True),
+    ("Can you remind me tomorrow? Not too early though.", "allow", True),
+    # French soft proposals the polite/imperative lists missed.
+    ("Pourquoi ne pas se voir demain à 9h ?", "allow", True),
+    ("Et si on se voyait demain à 15h ?", "allow", True),
+    ("Serait-il possible de se voir demain à 9h ?", "allow", True),
+    ("Dis-moi de bloquer demain matin.", "allow", True),
+    ("Est-ce qu'on peut se voir demain à 9h ?", "allow", True),
+    ("Je te propose demain à 15h.", "allow", True),
+    ("On se voit demain à 9h ?", "allow", True),
+    ("Ça te dit demain à 10h ?", "allow", True),
+    ("Dis-moi pourquoi la réunion est demain.", "reject", True),
+    # Copular command-words and event headlines are statements.
+    ("Email is down.", "reject", False),
+    ("Email is down every Monday.", "reject", False),
+    ("Schedule is full every Monday.", "reject", False),
+    ("Create is a verb we use every Monday.", "reject", False),
+    ("Set up is hard every Monday.", "reject", False),
+    ("Schedule changes every Monday.", "reject", False),
+    ("Email volume doubles every Monday.", "reject", False),
+    ("Email invoices every Monday.", "allow", False),
+    # Notes and lookups mention a calendar but do not create one.
+    ("Note that the meeting is tomorrow.", "reject", True),
+    ("Please note that we meet every Monday.", "reject", False),
+    ("Help me understand why we meet every Monday.", "reject", False),
+    ("Can you let me know the time of tomorrow's meeting?", "reject", True),
+    # Polite challenges, first-person modals, and soft deadlines.
+    ("Couldn't you remind me tomorrow at 9?", "allow", True),
+    ("Won't you schedule the review for Friday at 2?", "allow", True),
+    ("Can't you remind me tomorrow at 9?", "allow", True),
+    ("Might you book a room tomorrow at 3?", "allow", True),
+    ("Could I book a room tomorrow at 3?", "allow", True),
+    ("May I schedule a call for Thursday at 4?", "allow", True),
+    ("Can I get a reminder tomorrow at 9?", "allow", True),
+    ("Shall I book the room for tomorrow at 2?", "allow", True),
+    ("Should I schedule the review for Thursday at 4?", "allow", True),
+    ("Would it be okay to meet tomorrow at 3?", "allow", True),
+    ("I'd appreciate a reminder every Monday at 9.", "allow", True),
+    ("I should be reminded every Monday.", "allow", False),
+    ("Be sure to email me the recap tomorrow morning.", "allow", True),
+    ("Block 30 minutes tomorrow afternoon.", "allow", True),
+    ("Clear my calendar tomorrow afternoon.", "allow", True),
+    ("I need this scheduled for Friday at 3.", "allow", True),
+    ("I need this by Friday at 5.", "allow", True),
+    ("We could meet tomorrow at 3.", "allow", True),
+    ("We can meet every Friday at 10.", "allow", True),
+    ("We ought to meet tomorrow at 3.", "allow", True),
+    ("We have to meet Friday at 10.", "allow", True),
+    ("We can meet the deadline every Friday.", "reject", False),
+    ("It would be great if you reminded me tomorrow at 3.", "allow", True),
+    ("I wish we could meet tomorrow at 3.", "allow", True),
+    ("Mind meeting tomorrow at 3?", "allow", True),
+    ("How about meeting tomorrow at 3?", "allow", True),
+    ("How about a call tomorrow at 4?", "allow", True),
+    ("When can you remind me tomorrow?", "allow", True),
+    ("When can you remind me?", "reject", False),
+    ("Quit reminding me every day.", "clarify", False),
+    # English sentences that only look French because of "9h" or a loanword.
+    ("Let's meet tomorrow at 9h.", "allow", True),
+    ("I'd like to schedule a call at 9h.", "allow", True),
+    ("We should meet tomorrow at 9h.", "allow", True),
+    ("How about we meet at 9h?", "allow", True),
+    ("Meet me at the café tomorrow at 9.", "allow", True),
+    ("The café opens every Monday at 9.", "reject", True),
+    ("My résumé is due every Monday.", "reject", False),
+    ("I love the café every Monday.", "reject", False),
+    # French proposals and statements the lexicon still missed.
+    ("Il faudrait qu'on se voie demain à 9h.", "allow", True),
+    ("Souviens-toi de la réunion demain.", "allow", True),
+    ("La réunion de demain est annulée.", "reject", True),
+    ("Peux-tu me dire l'heure de la réunion de demain ?", "reject", True),
+    ("Il faudrait partir demain.", "reject", True),
+    # Colloquial proposals that name a time without "can you" / "let's".
+    ("Why don't we do Thursday at 3?", "allow", True),
+    ("How about we do Thursday at 3?", "allow", True),
+    ("What do you say we meet tomorrow at 3?", "allow", True),
+    ("I'd love to meet tomorrow at 3.", "allow", True),
+    ("I'd love a meeting tomorrow at 3.", "allow", True),
+    ("I wanted to schedule a call tomorrow.", "allow", True),
+    ("I'm down to meet tomorrow at 3.", "allow", True),
+    ("Suppose we meet tomorrow at 3.", "allow", True),
+    ("Why don't we do the laundry every Monday?", "reject", False),
+    ("Help me see why we meet every Monday.", "reject", False),
+    ("Does Thursday at 2 work for a call?", "clarify", True),
+    ("Ça serait possible de se voir demain ?", "allow", True),
     # eval_adversarial.py inserts confirmed cases above this marker.
+]
+
+# Orthography the French marker and imperative patterns still have to accept.
+# Duckling is empty on purpose: "9h", weekdays, and "dans deux heures" are
+# temporal on their own. "chaque an" is a French marker but not a recurrence.
+FRENCH_ORTHOGRAPHY_CASES = [
+    ("RAPPELLE-MOI DEMAIN À 9H.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9 h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle\u2011moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9\u00a0h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle\u200b-moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h \U0001f60a", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h.\n", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h.\x00", "allow", "request_with_temporal_signal", False),
+    ("«Rappelle-moi demain à 9h.»", "allow", "request_with_temporal_signal", False),
+    (", Rappelle-moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("« Peux-tu me rappeler demain ? »", "allow", "request_with_temporal_signal", False),
+    (" Peux-tu me rappeler demain ?", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi à midi.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi à minuit.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi lundi prochain.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi dans deux heures.", "allow", "request_with_temporal_signal", False),
+    ("Remind me at 9h.", "allow", "request_with_temporal_signal", False),
+    ("\ufeffRappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("  Rappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("\tRappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("9h", "clarify", "temporal_signal_without_clear_request", False),
+    ("9 h", "clarify", "temporal_signal_without_clear_request", False),
+    ("demain", "clarify", "temporal_signal_without_clear_request", False),
+    ("lundi", "clarify", "temporal_signal_without_clear_request", False),
+    ("The meeting is at 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("chaque an", "reject", "not_a_schedule_request", False),
+    ("chaque année", "reject", "not_a_schedule_request", False),
+    ("chaque annee", "reject", "not_a_schedule_request", False),
+    ("What is 9h?", "reject", "informational_question_not_schedule_request", False),
 ]
 
 
@@ -258,6 +412,12 @@ class IntentClassifierTests(unittest.TestCase):
 
     def test_edge_case_classifications(self):
         for text, expected, reason, has_time in EDGE_CASES:
+            with self.subTest(text=text, has_time=has_time):
+                result = self.classify_with_time(text, has_time)
+                self.assertEqual(expected, result["decision"], result["reason"])
+                self.assertEqual(reason, result["reason"])
+
+        for text, expected, reason, has_time in FRENCH_ORTHOGRAPHY_CASES:
             with self.subTest(text=text, has_time=has_time):
                 result = self.classify_with_time(text, has_time)
                 self.assertEqual(expected, result["decision"], result["reason"])
@@ -380,9 +540,21 @@ class IntentClassifierTests(unittest.TestCase):
             post.return_value.raise_for_status.return_value = None
             classify("Rappelle-moi demain matin.")
             classify("Remind me tomorrow morning.")
+            classify("Remind me tomorrow at 9h.")
+            classify("The café opens every Monday.")
 
         locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
-        self.assertEqual(["fr_FR", "en_GB"], locales)
+        self.assertEqual(["fr_FR", "en_GB", "en_GB", "en_GB"], locales)
+
+    def test_french_orthography_selects_the_french_locale(self):
+        for text, _expected, _reason, _has_time in FRENCH_ORTHOGRAPHY_CASES:
+            with self.subTest(text=text):
+                with patch("intent.requests.post") as post:
+                    post.return_value.json.return_value = []
+                    post.return_value.raise_for_status.return_value = None
+                    classify(text)
+                self.assertEqual("fr_FR", post.call_args.kwargs["data"]["locale"])
+                self.assertEqual(text, post.call_args.kwargs["data"]["text"])
 
 
 if __name__ == "__main__":

@@ -42,7 +42,23 @@ class ApiTests(unittest.TestCase):
         self.assertIn(french["decision"], {"allow", "clarify", "reject"})
 
     def test_analyze_endpoint_maps_unsupported_locales_to_400(self):
-        for locale in ("fr", "es_MX", "zh-CN", "de_DE", "ja", "pt-BR", "ar_EG"):
+        for locale in (
+            "fr",
+            "es_MX",
+            "zh-CN",
+            "de_DE",
+            "ja",
+            "pt-BR",
+            "ar_EG",
+            "fr-Latn",
+            "zh-Hans-CN",
+            "de.UTF-8",
+            "pt-419",
+            "ja@euro",
+            "ar-u-nu-latn",
+            "  FR  ",
+            "еn",
+        ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(
                     messages=[
