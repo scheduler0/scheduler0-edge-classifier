@@ -675,6 +675,29 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 }
 
 
+def should_use_french_locale(text):
+    """Determine if Duckling should use fr_FR locale.
+    
+    This is separate from text_looks_french() because some English texts with
+    "9h" should use fr_FR for Duckling (to parse the clock time) but still use
+    English classification patterns.
+    """
+    if not FRENCH_MARKER.search(text):
+        return False
+    # English temporal words mean English locale can handle it
+    stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    if _ENGLISH_TEMPORAL.search(stripped):
+        return False
+    # French lexicon means French locale
+    if _FRENCH_LEXICON.search(stripped):
+        return True
+    # "9h" clock time should use fr_FR even in English sentences
+    if _CLOCK_TIME.search(text):
+        return True
+    # Diacritics alone don't force French locale
+    return False
+
+
 def text_looks_french(text):
     if not FRENCH_MARKER.search(text):
         return False
@@ -687,21 +710,19 @@ def text_looks_french(text):
     if _FRENCH_LEXICON.search(stripped):
         return True
     # At this point: FRENCH_MARKER present (9h or diacritic), no English temporal,
-    # no French lexicon. Default to French to let FRENCH_TIME regex handle "9h".
-    # Exception: loanwords like "café" in pure English sentences.
-    if _CLOCK_TIME.search(text):
-        # "9h" is a strong French temporal signal, keep as French
-        return True
-    # Diacritic alone in English context (café, résumé) → check for English
-    if _ENGLISH_SYNTAX.search(text):
+    # no French lexicon. Check if sentence is predominantly English.
+    # "Remind me at 9h" is English with French clock → use English classification.
+    # "9h" alone or "Rappelle-moi à 9h" is French → use French classification.
+    if _ENGLISH_SYNTAX.search(stripped):
+        # English syntax words present → English classification
         return False
     return True
 
 
 def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
-    # en_GB, so switch locale only for text that looks French.
-    locale = "fr_FR" if text_looks_french(text) else "en_GB"
+    # en_GB, so switch locale when we need French temporal parsing.
+    locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
     r = requests.post(
         DUCKLING_URL,
         data={
@@ -830,7 +851,12 @@ def duckling_has_time(entities):
 
 
 def has_temporal_signal(text, entities):
-    return duckling_has_time(entities) or bool(RECURRENCE_PATTERN.search(text))
+    # Check Duckling entities, recurrence patterns, and French time markers (like "9h")
+    return (
+        duckling_has_time(entities) 
+        or bool(RECURRENCE_PATTERN.search(text))
+        or bool(FRENCH_TIME.search(text))
+    )
 
 
 def false_leading_command(doc):
