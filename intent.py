@@ -17,6 +17,14 @@ REQUEST_STARTERS = re.compile(
     re.I,
 )
 
+# "Email is down" / "Schedule is full" / "Set up is hard" name a fact.
+# The leading command word is the subject of a copula, not an imperative.
+COPULAR_COMMAND = re.compile(
+    r"^\s*(?:email|schedule|create|set\s+up)\s+"
+    r"(?:is|are|was|were|isn't|aren't|wasn't|weren't)\b",
+    re.I,
+)
+
 # Polite and proposal phrases that often follow a greeting or acknowledgment:
 # "Hi, can you...", "Thanks, but could you...", "Let's schedule...".
 REQUEST_PHRASES = re.compile(
@@ -32,8 +40,16 @@ REQUEST_PHRASES = re.compile(
     re.I,
 )
 
-QUESTION_REQUEST = re.compile(
-    r"\b(?:can|could|would|will)\s+you\b",
+# "Couldn't you" / "Won't you" / "Can't you" / "Might you" are polite
+# challenges, not refusals. "can't" and "won't" are irregular contractions.
+_MODAL_YOU_RE = (
+    r"\b(?:can't|won't|(?:can|could|would|will|should|might|may)"
+    r"(?:n't|\s+not)?)\s+you\b"
+)
+QUESTION_REQUEST = re.compile(_MODAL_YOU_RE, re.I)
+POLITE_CHALLENGE = re.compile(
+    r"\b(?:can't|won't|(?:can|could|would|will|should|might|may)"
+    r"(?:n't|\s+not))\s+you\b",
     re.I,
 )
 
@@ -43,8 +59,13 @@ INDEFINITE_REQUEST = re.compile(
 )
 
 # "we should meet" proposes a schedule; factual "we meet" does not.
+# "we can meet the deadline" is not a meeting, so "meet" cannot take an object.
 GROUP_PROPOSAL = re.compile(
-    r"\bwe\s+should\s+(?:meet|schedule|book|reschedule|move)\b",
+    r"\bwe\s+(?:should|could|can|shall|must|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:schedule|book|reschedule|move)\b"
+    r"|"
+    r"\bwe\s+(?:should|could|can|shall|must|ought\s+to|have\s+to|gotta)\s+meet\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
     re.I,
 )
 
@@ -84,11 +105,24 @@ HEDGED_PROPOSAL = re.compile(
     r"\bit\s+would\s+be\s+(?:great|nice|good)\s+if\s+(?:we|you)\s+"
     r"(?:could|can|would)\s+(?:meet|schedule|book|remind|reschedule)\b"
     r"|"
+    r"\bit\s+would\s+be\s+(?:great|nice|good)\s+if\s+you\s+reminded\b"
+    r"|"
+    r"\b(?:i\s+)?wish(?:ed)?\b.{0,40}\bwe\s+could\s+"
+    r"(?:meet|schedule|book|reschedule)\b"
+    r"|"
+    r"^\s*(?:mind\s+meeting|mind\s+(?:a|an)\s+(?:call|meeting|sync|chat))\b"
+    r"|"
     r"^\s*wanna\s+(?:meet|schedule|book|reschedule)\b"
     r"|"
     r"^\s*fancy\s+(?:a|an)\s+(?:call|meeting|sync|chat)\b"
     r"|"
-    r"^\s*up\s+for\s+(?:a|an)\s+(?:call|meeting|sync|chat)\b",
+    r"^\s*up\s+for\s+(?:a|an)\s+(?:call|meeting|sync|chat)\b"
+    r"|"
+    r"\bi(?:'m|\s+am)\s+down\s+to\s+(?:meet|schedule|book)\b"
+    r"(?!\s+(?:the|a|an)\b)"
+    r"|"
+    r"\bsuppose\s+we\s+(?:meet|schedule|book)\b"
+    r"(?!\s+(?:the|a|an)\b)",
     re.I,
 )
 
@@ -98,7 +132,11 @@ RHETORICAL_PROPOSAL = re.compile(
     r"^\s*why\s+(?:don't|do\s+not|dont|not)\s+(?:we\s+)?"
     r"(?:meet|schedule|book|reschedule|move)\b"
     r"|"
-    r"^\s*what\s+say\s+we\s+(?:meet|schedule|book|reschedule|move)\b"
+    r"^\s*why\s+(?:don't|do\s+not|dont|not)\s+we\s+do\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
+    r"|"
+    r"^\s*what\s+(?:do\s+you\s+)?say\s+we\s+(?:meet|schedule|book|reschedule|move)\b"
     r"|"
     r"\b(?:could|would|should)(?:n't|\s+not)\s+we\s+"
     r"(?:meet|schedule|book|reschedule|move)\b"
@@ -141,7 +179,11 @@ COLLECTIVE_REQUEST = re.compile(
 
 # "I need this done by Friday" is a deadline, not a statement of fact.
 DEADLINE_REQUEST = re.compile(
-    r"\bi\s+(?:need|want)\b.{0,60}\b(?:done|finished|completed|sent)\s+by\b",
+    r"\bi\s+(?:need|want)\b.{0,60}\b(?:done|finished|completed|sent)\s+by\b"
+    r"|"
+    r"\bi\s+(?:need|want)\b.{0,40}\b(?:scheduled|booked)\b"
+    r"|"
+    r"\bi\s+(?:need|want)\s+(?:this|it|that)\s+by\b",
     re.I,
 )
 
@@ -157,7 +199,21 @@ FIRST_PERSON_SCHEDULE = re.compile(
     r"(?:schedule|book|remind|set|create|send|email|notify|ping|meet|move|reschedule)\b"
     r"|"
     r"\bi\s+(?:want|need)\s+(?:a|an|the)\s+"
-    r"(?:reminder|meeting|call|sync|event|appointment)\b",
+    r"(?:reminder|meeting|call|sync|event|appointment)\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+appreciate\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b"
+    r"|"
+    r"\bi\s+should\s+be\s+reminded\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+love\s+to\s+"
+    r"(?:schedule|book|remind|set|meet|move|reschedule)\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+love\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b"
+    r"|"
+    r"\bi\s+wanted\s+to\s+"
+    r"(?:schedule|book|remind|meet|move|reschedule)\b",
     re.I,
 )
 
@@ -179,6 +235,21 @@ POLITE_INDIRECT = re.compile(
     r"|"
     r"\b(?:would\s+it\s+be\s+possible|is\s+it\s+possible)\s+to\s+(?:meet|schedule|book|remind)\b"
     r"|"
+    r"\bwould\s+it\s+be\s+(?:okay|ok|alright|fine)\s+to\s+(?:meet|schedule|book|remind)\b"
+    r"|"
+    r"\b(?:shall|should|can|could|may|might)\s+i\s+"
+    r"(?:book|schedule|reschedule|meet|remind|email|send|ping|notify|call)\b"
+    r"|"
+    r"\b(?:can|could|may|might)\s+i\s+(?:get|have)\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b"
+    r"|"
+    r"\b(?:be|make)\s+sure\s+to\s+"
+    r"(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
+    r"|"
+    r"\bblock(?:\s+off)?\s+(?:\d+\s+)?(?:minutes?|hours?|mins?)\b"
+    r"|"
+    r"\bclear\s+(?:my|the|our)\s+calendar\b"
+    r"|"
     r"\bcircle\s+back\b",
     re.I,
 )
@@ -192,6 +263,20 @@ INFO_QUESTION = re.compile(
 # "When is Easter?" does not.
 SCHEDULING_PROPOSAL_QUESTION = re.compile(
     r"\b(?:should|shall|can|could)\s+we\s+(?:meet|schedule|book|reschedule|move)\b",
+    re.I,
+)
+
+# "When can you remind me tomorrow?" names the ask. "When can you remind me?" does not.
+WHEN_YOU_SCHEDULE = re.compile(
+    r"^\s*when\s+(?:can|could|would|will)\s+you\s+"
+    r"(?:remind|schedule|book|email|ping|notify|send|call|meet)\b",
+    re.I,
+)
+
+_LEFTOVER_TIME_WORD = re.compile(
+    r"\b(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|morning|afternoon|evening|night|daily|weekly|hourly|"
+    r"nightly|every|each|next|\d)\b",
     re.I,
 )
 
@@ -210,7 +295,8 @@ RECURRENCE_PATTERN = re.compile(
 
 # "stop by" means visit, not cancel. "stop reminding" is still negation.
 NEGATION_PATTERN = re.compile(
-    r"\b(don't|do not|dont|never|stop(?!\s+by)|cancel|remove)\b",
+    r"\b(don't|do not|dont|never|stop(?!\s+by)|cancel|remove|"
+    r"quit(?=\s+(?:remind|email|schedul|send|notify|ping)))\b",
     re.I,
 )
 
@@ -305,6 +391,22 @@ EVENT_HEADLINE_LEMMAS = {
     "happen",
     "occur",
     "increase",
+    "change",
+    "double",
+    "triple",
+    "drop",
+    "fall",
+    "grow",
+    "shrink",
+    "decline",
+    "decrease",
+    "plunge",
+    "dip",
+    "crash",
+    "soar",
+    "tumble",
+    "vanish",
+    "disappear",
 }
 
 # Looking up a calendar, or a rhetorical "can you believe", is not a request
@@ -315,19 +417,23 @@ INFO_LOOKUP = re.compile(
     r"|"
     r"\bcheck\b.{0,40}\b(?:schedules?|calendars?|agendas?)\b"
     r"|"
-    r"\b(?:can|could|would|will)\s+you\s+(?:believe|imagine)\b"
+    r"\b(?:can|could|would|will)(?:n't|\s+not)?\s+you\s+(?:believe|imagine)\b"
     r"|"
-    r"\bhow\s+to\s+(?:schedule|book|reschedule|set\s+up|cancel)\b",
+    r"\bhow\s+to\s+(?:schedule|book|reschedule|set\s+up|cancel)\b"
+    r"|"
+    r"\bhelp\s+me\s+(?:understand|know|learn|figure|see\s+why)\b"
+    r"|"
+    r"\blet\s+me\s+know\b"
+    r"|"
+    r"\bnote\s+that\b",
     re.I,
 )
 
 # The loaded spaCy model is English, so French part-of-speech tags are not
 # usable (they turn "Pourquoi" and "Ne" into imperative verbs). French
 # decisions use these lexicons and the same allow/clarify/reject order.
-FRENCH_MARKER = re.compile(
-    r"[àâäçéèêëîïôùûüœæ]"
-    r"|\b\d{1,2}\s*h\d{0,2}\b"
-    r"|\btous\s+les\b|\btoutes\s+les\b"
+_FRENCH_LEXICON_RE = (
+    r"\btous\s+les\b|\btoutes\s+les\b"
     r"|\bs['’]il\b|\bqu['’]est\b|\bc['’]est\b"
     r"|\b(?:peux|pouvez|pourrais|pourriez|voudrais|aimerais|veuillez|"
     r"rappelle|rappelez|rappeler|rappel|planifie|planifiez|planifier|"
@@ -337,7 +443,24 @@ FRENCH_MARKER = re.compile(
     r"courriel|pourquoi|combien|quand|quel|quelle|quels|quelles|est-ce|"
     r"chaque|svp|stp|oublie|oubliez|bonjour|hebdomadaire|matin|soir|soirs|"
     r"nuit|nuits|semaine|semaines|fonctionne|calendrier|sauvegarde|ajoute|"
-    r"ajoutez|bloque|bloquez|fixez|merci)\b",
+    r"ajoutez|bloque|bloquez|fixez|merci)\b"
+)
+
+# Diacritics ("café") and "9h" clocks also show up in English. The lexicon
+# portion is what actually decides a French sentence once those are removed.
+FRENCH_MARKER = re.compile(
+    r"[àâäçéèêëîïôùûüœæ]"
+    r"|\b\d{1,2}\s*h\d{0,2}\b"
+    r"|" + _FRENCH_LEXICON_RE,
+    re.I,
+)
+_FRENCH_LEXICON = re.compile(_FRENCH_LEXICON_RE, re.I)
+_CLOCK_TIME = re.compile(r"\b\d{1,2}\s*h\d{0,2}\b", re.I)
+_DIACRITIC = re.compile(r"[àâäçéèêëîïôùûüœæ]", re.I)
+_ENGLISH_SYNTAX = re.compile(
+    r"\b(?:the|my|your|our|their|is|are|was|were|every|each|"
+    r"remind|please|let'?s|can|could|would|should|how|we|"
+    r"tomorrow|today|tonight|meeting|schedule|email|i)\b",
     re.I,
 )
 
@@ -358,7 +481,8 @@ FRENCH_YESNO_REQUEST = re.compile(
 
 FRENCH_EXPLAIN = re.compile(
     r"\b(?:expliquer|explique(?:z|-moi)?|d[eé]cri(?:s|re|vez)|"
-    r"dis-moi\s+(?:pourquoi|comment|quand|o[uù]|qui))\b",
+    r"dis-moi\s+(?:pourquoi|comment|quand|o[uù]|qui)|"
+    r"me\s+dire\s+(?:pourquoi|comment|quand|o[uù]|qui|l['’]heure|si))\b",
     re.I,
 )
 
@@ -412,7 +536,13 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\bon\s+se\s+(?:voit|retrouve|r[eé]unit)\b[^.?!]*\?"
     r"|"
     r"\bdis-moi\s+de\s+(?:bloquer|r[eé]server|planifier|rappeler|"
-    r"programmer|caler|d[eé]placer)\b",
+    r"programmer|caler|d[eé]placer)\b"
+    r"|"
+    r"\bfaudrait\b.{0,80}\b(?:se\s+voir|se\s+voie|se\s+retrouver|"
+    r"se\s+r[eé]unir|planifier|r[eé]server|caler|rappeler)\b"
+    r"|"
+    r"\b(?:ça|ca|ce)\s+serait\s+possible\s+de\s+(?:se\s+voir|se\s+retrouver|"
+    r"se\s+r[eé]unir|planifier|r[eé]server|caler)\b",
     re.I,
 )
 
@@ -433,7 +563,9 @@ FRENCH_CANCEL_REQUEST = re.compile(
 
 # "Pense à me rappeler" is "remember to remind me", same intent as "don't forget".
 FRENCH_REMEMBER = re.compile(
-    r"(?:^|[,:;]\s*)pense(?:z)?\s+[àa]\b",
+    r"(?:^|[,:;]\s*)pense(?:z)?\s+[àa]\b"
+    r"|(?:^|[,:;]\s*)souviens-toi\b"
+    r"|^\s*souvenez-vous\b",
     re.I,
 )
 
@@ -513,7 +645,7 @@ FRENCH_TIME = re.compile(
 FRENCH_STATEMENT = re.compile(
     r"^\s*(?:j['’]|je\b|tu\b|il\b|elle\b|on\b|nous\b|ils\b|elles\b|"
     r"mon\b|ma\b|mes\b|notre\b|nos\b|son\b|sa\b|ses\b|leur\b|leurs\b)"
-    r"|^\s*(?:le|la|les|un|une|ce|cet|cette)\s+\S+\s+"
+    r"|^\s*(?:le|la|les|un|une|ce|cet|cette)\s+(?:\S+\s+){1,6}"
     r"(?:est|sont|tourne|part|d[eé]marre|demarre|s['’]ex[eé]cute|s['’]execute|"
     r"ouvre|ouvrent|ferme|ferment)\b"
     r"|^\s*note(?:z)?\s+que\b",
@@ -540,7 +672,16 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 
 
 def text_looks_french(text):
-    return bool(FRENCH_MARKER.search(text))
+    if not FRENCH_MARKER.search(text):
+        return False
+    # "9h" and loanwords such as "café" / "résumé" are not French on their own.
+    # Keep the English path when the remaining words are English syntax.
+    stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    if _FRENCH_LEXICON.search(stripped):
+        return True
+    if _ENGLISH_SYNTAX.search(text):
+        return False
+    return True
 
 
 def duckling_parse(text):
@@ -594,6 +735,23 @@ def has_non_request_subject(doc):
 
 
 def has_scheduling_proposal(text):
+    # "How about meeting tomorrow" and "How about a call tomorrow" propose a
+    # slot. "How about tomorrow" and "How about meeting notes" do not.
+    if re.search(
+        r"^\s*how\s+about\s+meeting(?=\s*(?:[?.!]|$)|"
+        r"\s+(?:tomorrow|today|tonight|again|at|on|every|each|next|this|"
+        r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+        r"morning|afternoon|evening|night|\d)\b)",
+        text,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"^\s*how\s+about\s+(?:a|an)\s+(?:call|meeting|sync|chat|appointment)\b",
+        text,
+        re.I,
+    ):
+        return True
     # "how about" / "what if" are proposals only when followed by scheduling action.
     # "What if the book club meets..." has "book" but it's not a scheduling proposal.
     match = PROPOSAL_PREFIX.search(text)
@@ -605,6 +763,8 @@ def has_scheduling_proposal(text):
     # This avoids matching "the book club" or "my book" where "book" is a noun
     proposal_pattern = re.compile(
         r"\b(?:we|i)\s+(?:schedule|book|meet|reschedule|move|cancel)\b"
+        r"|\b(?:we|i)\s+do\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|"
+        r"thursday|friday|saturday|sunday|next|\d)\b"
         r"|\b(?:scheduling|booking|meeting|rescheduling|moving|canceling)\s+(?:a|an|the)\b"
         r"|\b(?:schedule|book|meet|reschedule|move|cancel)\s+(?:a|an|the|our|my)\b",
         re.I
@@ -613,29 +773,30 @@ def has_scheduling_proposal(text):
 
 
 def has_request_phrase(text):
-    return any(
-        pattern.search(text)
-        for pattern in (
-            REQUEST_STARTERS,
-            REQUEST_PHRASES,
-            QUESTION_REQUEST,
-            INDEFINITE_REQUEST,
-            GROUP_PROPOSAL,
-            NEED_TO_SCHEDULE,
-            HEDGED_PROPOSAL,
-            RHETORICAL_PROPOSAL,
-            COLLECTIVE_REQUEST,
-            DEADLINE_REQUEST,
-            FIRST_PERSON_SCHEDULE,
-            POLITE_INDIRECT,
-            OBLIGATION_REQUEST,
-            FRENCH_POLITE,
-            FRENCH_IMPERATIVE,
-            FRENCH_PROPOSAL,
-            FRENCH_SOFT_PROPOSAL,
-            FRENCH_CANCEL_REQUEST,
-        )
-    ) or has_scheduling_proposal(text)
+    patterns = (
+        REQUEST_STARTERS,
+        REQUEST_PHRASES,
+        QUESTION_REQUEST,
+        INDEFINITE_REQUEST,
+        GROUP_PROPOSAL,
+        NEED_TO_SCHEDULE,
+        HEDGED_PROPOSAL,
+        RHETORICAL_PROPOSAL,
+        COLLECTIVE_REQUEST,
+        DEADLINE_REQUEST,
+        FIRST_PERSON_SCHEDULE,
+        POLITE_INDIRECT,
+        OBLIGATION_REQUEST,
+        FRENCH_POLITE,
+        FRENCH_IMPERATIVE,
+        FRENCH_PROPOSAL,
+        FRENCH_SOFT_PROPOSAL,
+        FRENCH_CANCEL_REQUEST,
+    )
+    # A copular subject ("Schedule is full") must not count as "schedule ...".
+    if COPULAR_COMMAND.search(text):
+        patterns = tuple(pattern for pattern in patterns if pattern is not REQUEST_STARTERS)
+    return any(pattern.search(text) for pattern in patterns) or has_scheduling_proposal(text)
 
 
 def leading_imperative(doc):
@@ -755,8 +916,11 @@ def looks_like_request(doc, text):
     # "Remind me tomorrow"
     # "Email Acme every Monday"
     # Usually root verb with no explicit subject.
+    # "Does Thursday work for a call?" is a question whose root is "do",
+    # not an imperative. Emphatic "Do remind me" has root "remind".
     if root.pos_ == "VERB" and not has_subject(doc):
-        return True
+        if not (root.lemma_.lower() == "do" and "?" in text):
+            return True
 
     # "Book conference room B", "Snooze the reminder" — spaCy drops the verb.
     if leading_imperative(doc):
@@ -787,6 +951,10 @@ def looks_like_declarative_statement(doc, text):
     if has_request_phrase(text):
         return False
 
+    # "Set up is hard" — spaCy tags the command word as csubj, not nsubj.
+    if COPULAR_COMMAND.search(text):
+        return True
+
     # "I love waking up every Monday at 9am"
     # "My backup runs every day"
     # "We meet every Friday"
@@ -800,6 +968,9 @@ def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
     if RHETORICAL_PROPOSAL.search(text):
+        return False
+    when_request = WHEN_YOU_SCHEDULE.search(text)
+    if when_request and _LEFTOVER_TIME_WORD.search(text[when_request.end() :]):
         return False
     if not INFO_QUESTION.search(text):
         return False
@@ -976,6 +1147,11 @@ def has_negation(text, doc):
         check_text_after_never_mind = RHETORICAL_PROPOSAL.sub(
             " ", check_text_after_never_mind
         )
+    challenge = POLITE_CHALLENGE.search(text)
+    if challenge:
+        check_text_after_never_mind = POLITE_CHALLENGE.sub(
+            " ", check_text_after_never_mind
+        )
     if NEGATION_PATTERN.search(check_text_after_never_mind):
         return True
 
@@ -1011,6 +1187,8 @@ def has_negation(text, doc):
             rhetorical
             and rhetorical.start() <= token.idx < rhetorical.end()
         ):
+            continue
+        if challenge and challenge.start() <= token.idx < challenge.end():
             continue
         if not _dep_negation_cancels_schedule(token):
             continue
