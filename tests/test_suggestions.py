@@ -144,6 +144,81 @@ class LocaleResolutionTests(unittest.TestCase):
                 parsed.assert_not_called()
                 nlp.assert_not_called()
 
+    def test_english_subtags_keep_a_known_region_or_fall_back(self):
+        fallbacks = (
+            "en_",
+            "en_FR",
+            "enn",
+            "en.",
+            "eng",
+            "en-",
+            "en_Latn_US",
+            "en-001",
+            "en_US.utf8",
+            "en_GB.UTF-8",
+            "en\u200b",
+            "en\u00a0",
+            "en\n",
+            "en_US\u200b",
+            "en-GB-u-ca-gregory",
+        )
+        for raw in fallbacks:
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        kept = {
+            "en_US\u00a0": "en_US",
+            "en__US": "en_US",
+            "EN_us_extra": "en_US",
+            "en_US_POSIX": "en_US",
+            "en-us-x-private": "en_US",
+            "en_CA_x_private": "en_CA",
+            "  EN_us  ": "en_US",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+    def test_script_posix_and_lookalike_locales_are_rejected(self):
+        suffixes = ("-Latn", "-Hans", ".UTF-8", "-u-nu-latn", "@euro", "-419")
+        for lang in DUCKLING_LANGUAGES:
+            if lang == "EN":
+                continue
+            for suffix in suffixes:
+                raw = f"{lang.lower()}{suffix}"
+                with self.subTest(locale=raw):
+                    self.assertFalse(is_english_locale(raw))
+                    with self.assertRaises(UnsupportedLocaleError) as ctx:
+                        resolve_duckling_locale(raw)
+                    self.assertEqual(raw, ctx.exception.locale)
+
+        for raw in ("zh-Hans-CN", "  FR  ", "еn", "еn_US"):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_rejects_script_subtags_before_parsing(self):
+        for lang in DUCKLING_LANGUAGES:
+            if lang == "EN":
+                continue
+            locale = f"{lang.lower()}-Latn"
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError):
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
