@@ -27,7 +27,7 @@ REQUEST_PHRASES = re.compile(
     r"what about|can we|could we|shall we|should we|"
     r"do you mind"
     r")\b"
-    r"|\blet'?s(?!\s+(?:us|me|him|her|them)\b)(?=\s)"
+    r"|\blet'?s(?!\s+(?:us|me|him|her|them|you|people|users|everyone|anyone|someone|everybody|anybody|somebody)\b)(?=\s)"
     r"|\blet\s+us(?!\s+(?:me|him|her|them)\b)(?=\s)",
     re.I,
 )
@@ -354,7 +354,34 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 
 
 def text_looks_french(text):
-    return bool(FRENCH_MARKER.search(text))
+    # Require at least 2 French markers to avoid false positives from loanwords
+    # like "café", "résumé", "André" in otherwise English text.
+    diacritics = re.compile(r"[àâäçéèêëîïôùûüœæ]")
+    time_marker = re.compile(r"\b\d{1,2}\s*h\d{0,2}\b")
+    french_words = re.compile(
+        r"\btous\s+les\b|\btoutes\s+les\b"
+        r"|\bs['']il\b|\bqu['']est\b|\bc['']est\b"
+        r"|\b(?:peux|pouvez|pourrais|pourriez|voudrais|aimerais|veuillez|"
+        r"rappelle|rappelez|rappeler|rappel|planifie|planifiez|planifier|"
+        r"previens|prevenez|previent|envoi\w*|programmez|annule|annuler|annulez|"
+        r"arrete|arretez|supprime|supprimez|supprimer|demain|aujourd|"
+        r"lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|rendez-vous|"
+        r"courriel|pourquoi|combien|quand|quel|quelle|quels|quelles|est-ce|"
+        r"chaque|svp|stp|oublie|oubliez|bonjour|hebdomadaire|matin|soir|soirs|"
+        r"nuit|nuits|semaine|semaines|fonctionne|calendrier|sauvegarde|ajoute|"
+        r"ajoutez|bloque|bloquez|fixez|merci)\b",
+        re.I
+    )
+    
+    marker_count = 0
+    if diacritics.search(text):
+        marker_count += 1
+    if time_marker.search(text):
+        marker_count += 1
+    if french_words.search(text):
+        marker_count += 1
+    
+    return marker_count >= 2
 
 
 def duckling_parse(text):
