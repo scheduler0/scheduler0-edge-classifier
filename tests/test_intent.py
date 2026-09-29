@@ -349,6 +349,41 @@ ADVERSARIAL_CASES = [
     # eval_adversarial.py inserts confirmed cases above this marker.
 ]
 
+# Orthography the French marker and imperative patterns still have to accept.
+# Duckling is empty on purpose: "9h", weekdays, and "dans deux heures" are
+# temporal on their own. "chaque an" is a French marker but not a recurrence.
+FRENCH_ORTHOGRAPHY_CASES = [
+    ("RAPPELLE-MOI DEMAIN À 9H.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9 h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle\u2011moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9\u00a0h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle\u200b-moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h \U0001f60a", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h.\n", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi demain à 9h.\x00", "allow", "request_with_temporal_signal", False),
+    ("«Rappelle-moi demain à 9h.»", "allow", "request_with_temporal_signal", False),
+    (", Rappelle-moi demain à 9h.", "allow", "request_with_temporal_signal", False),
+    ("« Peux-tu me rappeler demain ? »", "allow", "request_with_temporal_signal", False),
+    (" Peux-tu me rappeler demain ?", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi à midi.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi à minuit.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi lundi prochain.", "allow", "request_with_temporal_signal", False),
+    ("Rappelle-moi dans deux heures.", "allow", "request_with_temporal_signal", False),
+    ("Remind me at 9h.", "allow", "request_with_temporal_signal", False),
+    ("\ufeffRappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("  Rappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("\tRappelle-moi demain à 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("9h", "clarify", "temporal_signal_without_clear_request", False),
+    ("9 h", "clarify", "temporal_signal_without_clear_request", False),
+    ("demain", "clarify", "temporal_signal_without_clear_request", False),
+    ("lundi", "clarify", "temporal_signal_without_clear_request", False),
+    ("The meeting is at 9h.", "clarify", "temporal_signal_without_clear_request", False),
+    ("chaque an", "reject", "not_a_schedule_request", False),
+    ("chaque année", "reject", "not_a_schedule_request", False),
+    ("chaque annee", "reject", "not_a_schedule_request", False),
+    ("What is 9h?", "reject", "informational_question_not_schedule_request", False),
+]
+
 
 def duckling_entities(has_time):
     if not has_time:
@@ -377,6 +412,12 @@ class IntentClassifierTests(unittest.TestCase):
 
     def test_edge_case_classifications(self):
         for text, expected, reason, has_time in EDGE_CASES:
+            with self.subTest(text=text, has_time=has_time):
+                result = self.classify_with_time(text, has_time)
+                self.assertEqual(expected, result["decision"], result["reason"])
+                self.assertEqual(reason, result["reason"])
+
+        for text, expected, reason, has_time in FRENCH_ORTHOGRAPHY_CASES:
             with self.subTest(text=text, has_time=has_time):
                 result = self.classify_with_time(text, has_time)
                 self.assertEqual(expected, result["decision"], result["reason"])
@@ -504,6 +545,16 @@ class IntentClassifierTests(unittest.TestCase):
 
         locales = [call.kwargs["data"]["locale"] for call in post.call_args_list]
         self.assertEqual(["fr_FR", "en_GB", "en_GB", "en_GB"], locales)
+
+    def test_french_orthography_selects_the_french_locale(self):
+        for text, _expected, _reason, _has_time in FRENCH_ORTHOGRAPHY_CASES:
+            with self.subTest(text=text):
+                with patch("intent.requests.post") as post:
+                    post.return_value.json.return_value = []
+                    post.return_value.raise_for_status.return_value = None
+                    classify(text)
+                self.assertEqual("fr_FR", post.call_args.kwargs["data"]["locale"])
+                self.assertEqual(text, post.call_args.kwargs["data"]["text"])
 
 
 if __name__ == "__main__":
