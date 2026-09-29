@@ -351,7 +351,7 @@ FRENCH_INFO_QUESTION = re.compile(
 FRENCH_YESNO = re.compile(r"^\s*est-ce que\b", re.I)
 
 FRENCH_YESNO_REQUEST = re.compile(
-    r"^\s*est-ce que\s+(?:tu|vous|on)\s+"
+    r"^\s*est-ce qu?[''e](?:\s+)?(?:tu|vous|on)\s+"
     r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b",
     re.I,
 )
@@ -391,6 +391,28 @@ FRENCH_PROPOSAL = re.compile(
     r"|\bon\s+se\s+parle\b[^?\n]{0,80}\?"
     r"|\bon\s+s['’]appelle\b[^?\n]{0,80}\?"
     r"|\bon\s+doit\s+se\s+(?:voir|rencontrer|caler|parler|retrouver)\b",
+    re.I,
+)
+
+# Soft French proposals the imperative/polite lists miss.
+FRENCH_SOFT_PROPOSAL = re.compile(
+    r"\bserait-il\s+possible\s+de\s+(?:se\s+voir|se\s+retrouver|"
+    r"se\s+r[eé]unir|planifier|programmer|r[eé]server|bloquer|caler)\b"
+    r"|"
+    r"\bet\s+si\s+(?:on|nous)\s+(?:se\s+)?"
+    r"(?:voyait|voyions|retrouvait|retrouvions|r[eé]unissait|calait|planifiait)\b"
+    r"|"
+    r"\bpourquoi\s+ne\s+pas\s+(?:se\s+voir|se\s+retrouver|se\s+r[eé]unir|"
+    r"planifier|se\s+caler|caler)\b"
+    r"|"
+    r"\bje\s+(?:te|vous)\s+propose\b"
+    r"|"
+    r"\bça\s+(?:te|vous)\s+dit\b"
+    r"|"
+    r"\bon\s+se\s+(?:voit|retrouve|r[eé]unit)\b[^.?!]*\?"
+    r"|"
+    r"\bdis-moi\s+de\s+(?:bloquer|r[eé]server|planifier|rappeler|"
+    r"programmer|caler|d[eé]placer)\b",
     re.I,
 )
 
@@ -607,6 +629,11 @@ def has_request_phrase(text):
             FIRST_PERSON_SCHEDULE,
             POLITE_INDIRECT,
             OBLIGATION_REQUEST,
+            FRENCH_POLITE,
+            FRENCH_IMPERATIVE,
+            FRENCH_PROPOSAL,
+            FRENCH_SOFT_PROPOSAL,
+            FRENCH_CANCEL_REQUEST,
         )
     ) or has_scheduling_proposal(text)
 
@@ -649,6 +676,63 @@ def false_leading_command(doc):
     return root.lemma_.lower() in EVENT_HEADLINE_LEMMAS
 
 
+def _separated_by_break(doc, earlier, later):
+    if earlier.i >= later.i:
+        return False
+    return any(t.text in {",", ":"} for t in doc[earlier.i + 1 : later.i])
+
+
+def _lead_in_is_quoted_speech(doc, verb):
+    """A finite verb before the comma is reported speech, not a vocative."""
+    comma_at = max(
+        (i for i in range(verb.i) if doc[i].text in {",", ":"}),
+        default=None,
+    )
+    if comma_at is None:
+        return False
+    for token in doc[:comma_at]:
+        if token.pos_ != "VERB":
+            continue
+        if token.dep_ == "ROOT":
+            return True
+        if any(child.dep_ in {"nsubj", "nsubjpass"} for child in token.children):
+            return True
+    return False
+
+
+def preamble_imperative(doc):
+    """Scheduling imperative after a short lead-in.
+
+    "Okay, book the room" and "Reminder: send the report" are requests.
+    "Thanks. Remind me" is a new sentence and is left to the root check.
+    "She said, remind me" quotes someone else and is not a request.
+    """
+    for token in doc:
+        if token.text in {".", "?", "!"}:
+            break
+        lemma = token.lemma_.lower()
+        surface = token.text.lower()
+        if lemma not in LEADING_ACTIONS and surface not in LEADING_ACTIONS:
+            continue
+        if token.i == 0:
+            continue
+        if token.dep_ in {"compound", "amod", "nsubj", "nsubjpass", "dobj", "pobj", "attr"}:
+            continue
+        if not any(part.text in {",", ":"} for part in doc[: token.i]):
+            continue
+        if _lead_in_is_quoted_speech(doc, token):
+            continue
+        subjects = [
+            child
+            for child in token.children
+            if child.dep_ in {"nsubj", "nsubjpass", "expl"}
+        ]
+        if any(not _separated_by_break(doc, subject, token) for subject in subjects):
+            continue
+        return True
+    return False
+
+
 def looks_like_request(doc, text):
     root = root_token(doc)
 
@@ -678,6 +762,10 @@ def looks_like_request(doc, text):
     if leading_imperative(doc):
         return True
 
+    # "Okay, book the room" or "Reminder: send the report"
+    if preamble_imperative(doc):
+        return True
+
     return False
 
 
@@ -685,6 +773,10 @@ def looks_like_declarative_statement(doc, text):
     root = root_token(doc)
 
     if root is None:
+        return False
+
+    # Preamble imperatives are requests, not declaratives
+    if preamble_imperative(doc):
         return False
 
     if false_leading_command(doc):
@@ -798,7 +890,7 @@ def looks_like_info_request(doc):
 
 def looks_like_french_info_question(text):
     # "Pourquoi ne pas se voir demain ?" proposes a meeting.
-    if FRENCH_SOFT_PROPOSAL.search(text):
+    if FRENCH_PROPOSAL.search(text) or FRENCH_SOFT_PROPOSAL.search(text):
         return False
     if FRENCH_INFO_QUESTION.search(text) or INFO_QUESTION.search(text):
         return True
@@ -857,8 +949,10 @@ def looks_like_french_declarative(text, doc):
 
 def has_french_negation(text):
     # "n'oublie pas de me rappeler" means "don't forget to remind me".
+    # "Pourquoi ne pas se voir" is a proposal, not a cancellation.
     check = FRENCH_FORGET.sub(" ", text)
     check = FORGET_NEGATION.sub(" ", check)
+    check = FRENCH_SOFT_PROPOSAL.sub(" ", check)
     return bool(FRENCH_NEGATION.search(check) or NEGATION_PATTERN.search(check))
 
 
