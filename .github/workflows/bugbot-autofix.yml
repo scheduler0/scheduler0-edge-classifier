@@ -112,10 +112,11 @@ jobs:
           
           Bugbot is analyzing these failures and will attempt to generate fixes automatically.`;
           
+          const issueNumber = '${{ steps.pr.outputs.number }}';
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: ${{ steps.pr.outputs.number }},
+            issue_number: issueNumber,
             body: body
           });
     
@@ -179,10 +180,11 @@ jobs:
           const fs = require('fs');
           const report = fs.readFileSync('bugbot_report.md', 'utf8');
           
+          const issueNumber = '${{ steps.pr.outputs.number }}';
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: ${{ steps.pr.outputs.number }},
+            issue_number: issueNumber,
             body: report
           });
     

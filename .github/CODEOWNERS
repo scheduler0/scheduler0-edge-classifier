@@ -14,7 +14,6 @@
 # Bugbot configuration
 /.github/workflows/bugbot*.yml @scheduler0/devops
 /.cursor/ @scheduler0/devops
-/BUGBOT_SETUP.md @scheduler0/devops
 
 # Core intent classification logic
 /intent.py @scheduler0/nlp-team
@@ -33,3 +32,4 @@
 /Dockerfile @scheduler0/devops
 *.template.json @scheduler0/devops
 /DEPLOYMENT.md @scheduler0/devops
+/BUGBOT_SETUP.md @scheduler0/devops
