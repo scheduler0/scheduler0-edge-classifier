@@ -195,10 +195,16 @@ SCHEDULING_PROPOSAL_QUESTION = re.compile(
     re.I,
 )
 
+# "every other Monday" / "every half hour" still count when Duckling is empty.
+# Bare "daily" / "hourly" / "weekly" are the same recurrence signal.
 RECURRENCE_PATTERN = re.compile(
     r"\b(every|each)\s+"
+    r"(?:(?:other|single|half|\d+|two|three|four|five)\s+)?"
     r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
-    r"day|week|month|year|morning|afternoon|evening|night|weekday|weekend)s?\b",
+    r"day|week|month|year|morning|afternoon|evening|night|weekday|weekend|"
+    r"hour|minute|quarter)s?\b"
+    r"|"
+    r"\b(?:hourly|daily|weekly|nightly|monthly|yearly|annually|biweekly|fortnightly)\b",
     re.I,
 )
 
@@ -212,6 +218,12 @@ NEGATION_PATTERN = re.compile(
 # meaning "please remember to X".
 FORGET_NEGATION = re.compile(
     r"\b(?:don'?t|do\s+not|dont)\s+(?:(?:let|make)\s+me\s+)?forget\b",
+    re.I,
+)
+
+# "Don't let me miss the 3pm demo" is the same reminder, not a cancellation.
+MISS_NEGATION = re.compile(
+    r"\b(?:don'?t|do\s+not|dont)\s+let\s+me\s+miss\b",
     re.I,
 )
 
@@ -257,6 +269,58 @@ SCHEDULE_ACTION_LEMMAS = {
     "meet",
 }
 
+# "You need to remind me" / "someone should remind me" is a directive.
+# "You need to leave every Monday" is not: leave/attend stay off this list.
+OBLIGATION_REQUEST = re.compile(
+    r"\byou\s+(?:need|have|ought)\s+to\s+"
+    r"(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
+    r"|"
+    r"\byou\s+gotta\s+(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
+    r"|"
+    r"\byou(?:['’]ve|\s+have)\s+got\s+to\s+"
+    r"(?:remind|email|schedule|book|ping|notify|send|call)\b"
+    r"|"
+    r"\byou\s+should\s+(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
+    r"|"
+    r"\b(?:someone|somebody)\s+should\s+remind\b"
+    r"|"
+    r"\bi\s+need\s+to\s+be\s+reminded\b"
+    r"|"
+    r"\bi\s+need\s+reminding\b",
+    re.I,
+)
+
+# Headlines that only borrow a command word: "Schedule conflicts every Monday",
+# "Email traffic spikes", "Book sales peak", "Create buttons appear".
+# The root is an event predicate, not the thing being scheduled ("Email the recap").
+EVENT_HEADLINE_LEMMAS = {
+    "conflict",
+    "spike",
+    "peak",
+    "surge",
+    "rise",
+    "climb",
+    "jump",
+    "appear",
+    "happen",
+    "occur",
+    "increase",
+}
+
+# Looking up a calendar, or a rhetorical "can you believe", is not a request
+# to create one. "Show me how to book" asks for instructions.
+INFO_LOOKUP = re.compile(
+    r"\b(?:show|list|display|pull\s+up|walk)\b.{0,50}"
+    r"\b(?:schedules?|calendars?|agendas?|meetings)\b"
+    r"|"
+    r"\bcheck\b.{0,40}\b(?:schedules?|calendars?|agendas?)\b"
+    r"|"
+    r"\b(?:can|could|would|will)\s+you\s+(?:believe|imagine)\b"
+    r"|"
+    r"\bhow\s+to\s+(?:schedule|book|reschedule|set\s+up|cancel)\b",
+    re.I,
+)
+
 # The loaded spaCy model is English, so French part-of-speech tags are not
 # usable (they turn "Pourquoi" and "Ne" into imperative verbs). French
 # decisions use these lexicons and the same allow/clarify/reject order.
@@ -287,11 +351,8 @@ FRENCH_INFO_QUESTION = re.compile(
 FRENCH_YESNO = re.compile(r"^\s*est-ce que\b", re.I)
 
 FRENCH_YESNO_REQUEST = re.compile(
-    r"^\s*est-ce que\s+(?:tu|vous|on)\s+"
-    r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b"
-    r"|"
-    r"^\s*est-ce\s+qu['’](?:on|tu|il)\s+"
-    r"(?:peut|peux|pourrait|pourrais)\b",
+    r"^\s*est-ce qu?[''e](?:\s+)?(?:tu|vous|on)\s+"
+    r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b",
     re.I,
 )
 
@@ -314,6 +375,7 @@ FRENCH_POLITE = re.compile(
 FRENCH_IMPERATIVE = re.compile(
     r"(?:^|[,:;]\s*|«\s*|\"\s*)"
     r"(?:rappelle(?:z)?(?:-(?:moi|nous|le|la|les))?|"
+    r"appel(?:le(?:s|z)?|ez)(?:-(?:moi|nous))?|"
     r"pr[eé]vien[st]|pr[eé]venez|envoie(?:z)?|cr[eé]e(?:z)?|"
     r"planifie(?:z)?|"
     r"programme(?:z)?(?=\s+(?:la|le|les|un|une|l['’]|moi|nous|ça|ca|ce|cet|cette)\b)|"
@@ -324,13 +386,15 @@ FRENCH_IMPERATIVE = re.compile(
 )
 
 FRENCH_PROPOSAL = re.compile(
-    r"\b(?:on se cale|on cale|on se bloque)\b",
+    r"\b(?:on se cale|on cale|on se bloque)\b"
+    # "On se parle demain ?" proposes a call. Without "?" it is a statement.
+    r"|\bon\s+se\s+parle\b[^?\n]{0,80}\?"
+    r"|\bon\s+s['’]appelle\b[^?\n]{0,80}\?"
+    r"|\bon\s+doit\s+se\s+(?:voir|rencontrer|caler|parler|retrouver)\b",
     re.I,
 )
 
 # Soft French proposals the imperative/polite lists miss.
-# "On se voit ... ?" stays a statement without the question mark so
-# "Nous nous réunissons tous les vendredis" is unchanged.
 FRENCH_SOFT_PROPOSAL = re.compile(
     r"\bserait-il\s+possible\s+de\s+(?:se\s+voir|se\s+retrouver|"
     r"se\s+r[eé]unir|planifier|programmer|r[eé]server|bloquer|caler)\b"
@@ -349,6 +413,16 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\bdis-moi\s+de\s+(?:bloquer|r[eé]server|planifier|rappeler|"
     r"programmer|caler|d[eé]placer)\b",
+    re.I,
+)
+
+# "Tu dois me rappeler" / "Faut me rappeler" direct the listener to schedule.
+# "Tu dois partir demain" has no scheduling verb and stays a statement.
+FRENCH_OBLIGATION = re.compile(
+    r"\b(?:tu|vous)\s+(?:dois|devez)\s+(?:me\s+|nous\s+)?"
+    r"(?:rappeler|appeler|r[eé]server|planifier|pr[eé]venir)\b"
+    r"|"
+    r"\bfaut\b.{0,60}\brappel",
     re.I,
 )
 
@@ -440,7 +514,8 @@ FRENCH_STATEMENT = re.compile(
     r"^\s*(?:j['’]|je\b|tu\b|il\b|elle\b|on\b|nous\b|ils\b|elles\b|"
     r"mon\b|ma\b|mes\b|notre\b|nos\b|son\b|sa\b|ses\b|leur\b|leurs\b)"
     r"|^\s*(?:le|la|les|un|une|ce|cet|cette)\s+\S+\s+"
-    r"(?:est|sont|tourne|part|d[eé]marre|demarre|s['’]ex[eé]cute|s['’]execute)\b"
+    r"(?:est|sont|tourne|part|d[eé]marre|demarre|s['’]ex[eé]cute|s['’]execute|"
+    r"ouvre|ouvrent|ferme|ferment)\b"
     r"|^\s*note(?:z)?\s+que\b",
     re.I,
 )
@@ -546,13 +621,19 @@ def has_request_phrase(text):
             QUESTION_REQUEST,
             INDEFINITE_REQUEST,
             GROUP_PROPOSAL,
+            NEED_TO_SCHEDULE,
+            HEDGED_PROPOSAL,
+            RHETORICAL_PROPOSAL,
             COLLECTIVE_REQUEST,
             DEADLINE_REQUEST,
             FIRST_PERSON_SCHEDULE,
             POLITE_INDIRECT,
-            NEED_TO_SCHEDULE,
-            HEDGED_PROPOSAL,
-            RHETORICAL_PROPOSAL,
+            OBLIGATION_REQUEST,
+            FRENCH_POLITE,
+            FRENCH_IMPERATIVE,
+            FRENCH_PROPOSAL,
+            FRENCH_SOFT_PROPOSAL,
+            FRENCH_CANCEL_REQUEST,
         )
     ) or has_scheduling_proposal(text)
 
@@ -567,6 +648,32 @@ def leading_imperative(doc):
     if has_non_request_subject(doc):
         return False
     return True
+
+
+def duckling_has_time(entities):
+    return any(e.get("dim") in {"time", "duration"} for e in entities)
+
+
+def has_temporal_signal(text, entities):
+    return duckling_has_time(entities) or bool(RECURRENCE_PATTERN.search(text))
+
+
+def false_leading_command(doc):
+    """A command word used as a noun modifier of an event headline.
+
+    "Schedule conflicts every Monday" and "Email traffic spikes" are facts.
+    "Email Acme a recap" stays a command: its root is the recipient or object,
+    not an event predicate like conflict/spike/peak/appear.
+    """
+    first = next((t for t in doc if t.is_alpha), None)
+    if first is None:
+        return False
+    if first.lemma_.lower() not in LEADING_ACTIONS and first.text.lower() not in LEADING_ACTIONS:
+        return False
+    root = root_token(doc)
+    if root is None or root == first:
+        return False
+    return root.lemma_.lower() in EVENT_HEADLINE_LEMMAS
 
 
 def _separated_by_break(doc, earlier, later):
@@ -626,18 +733,10 @@ def preamble_imperative(doc):
     return False
 
 
-def duckling_has_time(entities):
-    return any(e.get("dim") in {"time", "duration"} for e in entities)
-
-
-def has_temporal_signal(text, entities):
-    return duckling_has_time(entities) or bool(RECURRENCE_PATTERN.search(text))
-
-
 def looks_like_request(doc, text):
     root = root_token(doc)
 
-    if root is None:
+    if root is None or false_leading_command(doc):
         return False
 
     # "Can you send me a digest every Friday?"
@@ -663,7 +762,7 @@ def looks_like_request(doc, text):
     if leading_imperative(doc):
         return True
 
-    # "Okay, book the room", "Hey team, schedule the retro".
+    # "Okay, book the room" or "Reminder: send the report"
     if preamble_imperative(doc):
         return True
 
@@ -676,13 +775,16 @@ def looks_like_declarative_statement(doc, text):
     if root is None:
         return False
 
+    # Preamble imperatives are requests, not declaratives
+    if preamble_imperative(doc):
+        return False
+
+    if false_leading_command(doc):
+        return True
+
     # Do not treat request-shaped questions as declarative just because
     # they contain subject "you" or "we".
     if has_request_phrase(text):
-        return False
-
-    # "Hey team, schedule ..." — spaCy attaches the vocative as nsubj.
-    if preamble_imperative(doc):
         return False
 
     # "I love waking up every Monday at 9am"
@@ -712,12 +814,69 @@ def looks_like_info_question(text):
     return True
 
 
+def _negation_is_reminder_content(token):
+    """'Remind me not to miss the meeting' negates the payload, not the request."""
+    head = token.head
+    return head.dep_ in {"xcomp", "ccomp", "advcl"} and head.head.lemma_.lower() in {
+        "remind",
+        "remember",
+        "tell",
+    }
+
+
+def _dep_negation_cancels_schedule(token):
+    """A spaCy neg edge cancels the request only when it scopes over a verb.
+
+    'Not sure, but can you remind me' negates an adjective. 'It's not urgent,
+    but please remind me' negates the copula. Neither cancels the reminder.
+    """
+    head = token.head
+    if head.pos_ not in {"VERB", "AUX"}:
+        return False
+    if head.lemma_.lower() == "be":
+        return False
+    return True
+
+
+def _bare_not_is_contrastive(doc, token):
+    """True when "not" picks an alternate time instead of canceling the ask.
+
+    "Remind me tomorrow, not Monday" and "Not tomorrow — remind me Friday"
+    still request a reminder. "I will not attend" does not.
+    """
+    if token.lemma_.lower() != "not":
+        return False
+    lowered = token.text.lower()
+    if lowered in {"n't", "n't"} or lowered.endswith("n't"):
+        return False
+    if token.head.pos_ not in {"VERB", "AUX"}:
+        return True
+    if token.i + 1 >= len(doc):
+        return False
+    nxt = doc[token.i + 1]
+    if nxt.pos_ in {"VERB", "AUX"}:
+        return False
+    if nxt.lemma_.lower() not in CONTRASTIVE_TIME_WORDS and nxt.pos_ not in {
+        "PROPN",
+        "NOUN",
+        "NUM",
+    }:
+        return False
+    if token.i == 0:
+        return True
+    return any(part.text in {",", ";", "—", "–", "?", "!"} for part in doc[: token.i])
+
+
 def looks_like_info_request(doc):
     """Polite asks whose action is only to explain or describe, not to schedule.
 
     "Can you explain why we meet every Friday?" is informational.
+    "Can you show me the schedule" and "can you believe we meet" are too.
     "Tell me to schedule the review" still names a scheduling action.
     """
+    if INFO_LOOKUP.search(doc.text):
+        return True
+
     root = root_token(doc)
     if root is None or root.lemma_.lower() not in INFO_ROOT_LEMMAS:
         return False
@@ -731,7 +890,7 @@ def looks_like_info_request(doc):
 
 def looks_like_french_info_question(text):
     # "Pourquoi ne pas se voir demain ?" proposes a meeting.
-    if FRENCH_SOFT_PROPOSAL.search(text):
+    if FRENCH_PROPOSAL.search(text) or FRENCH_SOFT_PROPOSAL.search(text):
         return False
     if FRENCH_INFO_QUESTION.search(text) or INFO_QUESTION.search(text):
         return True
@@ -765,6 +924,7 @@ def looks_like_french_request(text, doc):
             and FRENCH_SCHEDULE_NOUN.search(text)
         )
         or FRENCH_YESNO_REQUEST.search(text)
+        or FRENCH_OBLIGATION.search(text)
         or REQUEST_STARTERS.search(text)
         or QUESTION_REQUEST.search(text)
     ):
@@ -805,39 +965,11 @@ def has_french_temporal_signal(text, entities):
     )
 
 
-def _bare_not_is_contrastive(doc, token):
-    """True when "not" picks an alternate time instead of canceling the ask.
-
-    "Remind me tomorrow, not Monday" and "Not tomorrow — remind me Friday"
-    still request a reminder. "I will not attend" does not.
-    """
-    if token.lemma_.lower() != "not":
-        return False
-    lowered = token.text.lower()
-    if lowered in {"n't", "n’t"} or lowered.endswith("n't"):
-        return False
-    if token.head.pos_ not in {"VERB", "AUX"}:
-        return True
-    if token.i + 1 >= len(doc):
-        return False
-    nxt = doc[token.i + 1]
-    if nxt.pos_ in {"VERB", "AUX"}:
-        return False
-    if nxt.lemma_.lower() not in CONTRASTIVE_TIME_WORDS and nxt.pos_ not in {
-        "PROPN",
-        "NOUN",
-        "NUM",
-    }:
-        return False
-    if token.i == 0:
-        return True
-    return any(part.text in {",", ";", "—", "–", "?", "!"} for part in doc[: token.i])
-
-
 def has_negation(text, doc):
     # Strip double negations and discourse "never mind" before looking
     # for a real cancellation of the scheduling intent.
     check_text = FORGET_NEGATION.sub(" ", text)
+    check_text = MISS_NEGATION.sub(" ", check_text)
     check_text_after_never_mind = NEVER_MIND.sub(" ", check_text)
     rhetorical = RHETORICAL_PROPOSAL.search(text)
     if rhetorical:
@@ -859,6 +991,7 @@ def has_negation(text, doc):
             return True
 
     forget_request = bool(FORGET_NEGATION.search(text))
+    miss_request = bool(MISS_NEGATION.search(text))
     never_mind = bool(NEVER_MIND.search(text))
     for token in doc:
         if token.dep_ != "neg":
@@ -866,7 +999,11 @@ def has_negation(text, doc):
         head_lemma = token.head.lemma_.lower()
         if forget_request and head_lemma in {"forget", "let", "make"}:
             continue
+        if miss_request and head_lemma in {"miss", "let"}:
+            continue
         if never_mind and head_lemma == "mind":
+            continue
+        if _negation_is_reminder_content(token):
             continue
         if _bare_not_is_contrastive(doc, token):
             continue
@@ -874,6 +1011,8 @@ def has_negation(text, doc):
             rhetorical
             and rhetorical.start() <= token.idx < rhetorical.end()
         ):
+            continue
+        if not _dep_negation_cancels_schedule(token):
             continue
         return True
     return False
