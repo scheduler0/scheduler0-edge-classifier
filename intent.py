@@ -1290,7 +1290,7 @@ def classify(text):
         decision = "clarify"
         reason = "negated_schedule_like_request_needs_intent_confirmation"
 
-    elif temporal and declarative and request:
+    elif temporal and declarative:
         decision = "reject"
         reason = "declarative_schedule_not_request"
 
