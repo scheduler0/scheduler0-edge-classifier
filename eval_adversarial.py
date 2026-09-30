@@ -37,12 +37,22 @@ Its implementation uses these imperfect heuristics:
   when the root verb has no subject. Only the root's subject counts.
 - Text starting with what/why/how/when/where/who/which is rejected as an
   informational question, except scheduling proposals such as "how about we
-  meet" and "when should we meet".
+  meet", "when should we meet", "why don't we meet", "why not meet", and
+  "what say we meet". Hedged proposals ("I was wondering if we could meet",
+  "any chance we could meet", "mind if we meet", "we need to meet",
+  "fancy a call", "up for a meeting") are requests. A scheduling imperative
+  after a short lead-in ("Okay, book the room", "Reminder: send the report")
+  is a request; a new sentence after a period and quoted speech ("She said,
+  remind me") are not.
 - Asks whose root verb is tell/explain/describe are rejected even if they
   mention a time, unless they complement a scheduling verb ("tell me to book").
 - don't/do not/dont/never/stop/cancel/remove plus a temporal signal clarifies.
   "stop by", "don't forget", "don't let me forget", and discourse "never mind"
-  are not treated as canceling the request.
+  are not treated as canceling the request. Rhetorical proposal negation
+  ("why don't we", "couldn't we", "don't you think we should") and contrastive
+  time ("remind me Friday, not Monday", "not tomorrow — remind me Friday")
+  are not cancellations. Bare "not" attached to a noun or adverb is not one
+  either. "I will not attend" still clarifies.
 - Decision order: informational question or informational request -> reject;
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
@@ -51,6 +61,10 @@ Its implementation uses these imperfect heuristics:
   lexicon, then classified with the same order using French request, question,
   negation, recurrence, and statement patterns. English spaCy tags are not
   trusted for French. Duckling is called with locale fr_FR for that text.
+  Soft proposals are requests: "pourquoi ne pas se voir", "et si on se voyait",
+  "serait-il possible de se voir", "est-ce qu'on peut", "je te propose",
+  "ça te dit", "on se voit ... ?", and "dis-moi de bloquer". "Pourquoi ne pas"
+  is not a cancellation and not an informational question.
 """
 
 
