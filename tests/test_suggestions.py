@@ -219,6 +219,71 @@ class LocaleResolutionTests(unittest.TestCase):
                 parsed.assert_not_called()
                 nlp.assert_not_called()
 
+    def test_padding_aliases_and_false_english_tags(self):
+        # Known regions survive surrounding whitespace, including NBSP and
+        # ideographic space. The first region tag wins when several are present.
+        kept = {
+            "\ten_US\t": "en_US",
+            "\u00a0en_US\u00a0": "en_US",
+            "\u3000en_CA\u3000": "en_CA",
+            "en_US\n": "en_US",
+            "eN-uS": "en_US",
+            "en_us_gb": "en_US",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        # UK is not a Duckling region (GB is). A trailing BOM, NUL, or mark
+        # inside the tag is not a separator, so the region is not recognized.
+        for raw in (
+            "en_UK",
+            "en-UK",
+            "en_uk",
+            "en_GBR",
+            "en_USA",
+            "en_US\ufeff",
+            "en\u3000US",
+            "english_US",
+            "en___",
+            "en\r_US",
+            "en_US\x00",
+            "en.US",
+            "en@euro",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in ("\ufeffen", "\ufeffen_US", "\u00a0fr\u00a0", "fr\ufeff", "de\u200b", 123):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_rejects_a_bom_prefixed_english_tag_before_parsing(self):
+        locale = "\ufeffen_US"
+        with patch("suggestions.duckling_parse") as parsed:
+            with patch("suggestions.nlp") as nlp:
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    analyze(_request([_msg("I'll send you the proposal tomorrow.")], locale=locale))
+        self.assertEqual(locale, ctx.exception.locale)
+        parsed.assert_not_called()
+        nlp.assert_not_called()
+
+    def test_analyze_maps_an_unknown_english_region_to_en_gb(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="\u3000en-uk\u3000",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
