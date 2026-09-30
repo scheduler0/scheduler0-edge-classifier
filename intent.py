@@ -721,6 +721,14 @@ def text_looks_french(text):
     # no French lexicon. Check if sentence is predominantly English.
     # "Remind me at 9h" is English with French clock → use English classification.
     # "9h" alone or "Rappelle-moi à 9h" is French → use French classification.
+    # Non-English text with diacritics → treat as French for classification.
+    if _DIACRITIC.search(text):
+        # Count English words - if there are many, it's English with a loanword
+        english_count = len(_ENGLISH_SYNTAX.findall(stripped))
+        if english_count >= 3:
+            return False
+        # Few/no English words with diacritics → treat as French classification
+        return True
     if _ENGLISH_SYNTAX.search(stripped):
         # English syntax words present → English classification
         return False
