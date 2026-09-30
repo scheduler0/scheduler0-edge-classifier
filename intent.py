@@ -463,6 +463,10 @@ _ENGLISH_SYNTAX = re.compile(
     r"tomorrow|today|tonight|meeting|schedule|email|i)\b",
     re.I,
 )
+_ENGLISH_TEMPORAL = re.compile(
+    r"\b(?:tomorrow|today|tonight|yesterday|every|each|daily|weekly|monthly)\b",
+    re.I,
+)
 
 FRENCH_INFO_QUESTION = re.compile(
     r"^\s*(?:[àa]\s+)?"
@@ -671,23 +675,70 @@ ENGLISH_IMPERATIVE_LEMMAS = {
 }
 
 
+def should_use_french_locale(text):
+    """Determine if Duckling should use fr_FR locale.
+    
+    This is separate from text_looks_french() because some English texts with
+    "9h" should use fr_FR for Duckling (to parse the clock time) but still use
+    English classification patterns.
+    """
+    if not FRENCH_MARKER.search(text):
+        return False
+    # English temporal words mean English locale can handle it
+    stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    if _ENGLISH_TEMPORAL.search(stripped):
+        return False
+    # French lexicon means French locale
+    if _FRENCH_LEXICON.search(stripped):
+        return True
+    # "9h" clock time should use fr_FR even in English sentences
+    if _CLOCK_TIME.search(text):
+        return True
+    # Diacritics in non-English text should try fr_FR
+    # Only return False if it's clearly English (has many English syntax words)
+    if _DIACRITIC.search(text):
+        # Count English words - if there are many, it's English with a loanword
+        english_count = len(_ENGLISH_SYNTAX.findall(stripped))
+        if english_count >= 3:
+            return False
+        # Few/no English words with diacritics → try French locale
+        return True
+    return False
+
+
 def text_looks_french(text):
     if not FRENCH_MARKER.search(text):
         return False
-    # "9h" and loanwords such as "café" / "résumé" are not French on their own.
-    # Keep the English path when the remaining words are English syntax.
+    # English temporal words (tomorrow, today, etc.) override "9h" or loanwords.
+    # Strip diacritics and clock times to check what remains.
     stripped = _DIACRITIC.sub("", _CLOCK_TIME.sub(" ", text))
+    if _ENGLISH_TEMPORAL.search(stripped):
+        return False
+    # French lexicon words are strong evidence of French.
     if _FRENCH_LEXICON.search(stripped):
         return True
-    if _ENGLISH_SYNTAX.search(text):
+    # At this point: FRENCH_MARKER present (9h or diacritic), no English temporal,
+    # no French lexicon. Check if sentence is predominantly English.
+    # "Remind me at 9h" is English with French clock → use English classification.
+    # "9h" alone or "Rappelle-moi à 9h" is French → use French classification.
+    # Non-English text with diacritics → treat as French for classification.
+    if _DIACRITIC.search(text):
+        # Count English words - if there are many, it's English with a loanword
+        english_count = len(_ENGLISH_SYNTAX.findall(stripped))
+        if english_count >= 3:
+            return False
+        # Few/no English words with diacritics → treat as French classification
+        return True
+    if _ENGLISH_SYNTAX.search(stripped):
+        # English syntax words present → English classification
         return False
     return True
 
 
 def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
-    # en_GB, so switch locale only for text that looks French.
-    locale = "fr_FR" if text_looks_french(text) else "en_GB"
+    # en_GB, so switch locale when we need French temporal parsing.
+    locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
     r = requests.post(
         DUCKLING_URL,
         data={
@@ -816,7 +867,12 @@ def duckling_has_time(entities):
 
 
 def has_temporal_signal(text, entities):
-    return duckling_has_time(entities) or bool(RECURRENCE_PATTERN.search(text))
+    # Check Duckling entities, recurrence patterns, and French time markers (like "9h")
+    return (
+        duckling_has_time(entities) 
+        or bool(RECURRENCE_PATTERN.search(text))
+        or bool(FRENCH_TIME.search(text))
+    )
 
 
 def false_leading_command(doc):
@@ -1235,8 +1291,18 @@ def classify(text):
         reason = "negated_schedule_like_request_needs_intent_confirmation"
 
     elif temporal and declarative:
-        decision = "reject"
-        reason = "declarative_schedule_not_request"
+        # Only reject declaratives when Duckling found temporal or recurrence pattern
+        # Declaratives with only FRENCH_TIME regex (like "9h") should clarify
+        duckling_found = duckling_has_time(entities)
+        recurrence_found = bool(RECURRENCE_PATTERN.search(text)) or (
+            french and bool(FRENCH_RECURRENCE.search(text))
+        )
+        if duckling_found or recurrence_found:
+            decision = "reject"
+            reason = "declarative_schedule_not_request"
+        else:
+            decision = "clarify"
+            reason = "temporal_signal_without_clear_request"
 
     elif temporal and request and not declarative:
         decision = "allow"
