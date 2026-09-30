@@ -694,7 +694,15 @@ def should_use_french_locale(text):
     # "9h" clock time should use fr_FR even in English sentences
     if _CLOCK_TIME.search(text):
         return True
-    # Diacritics alone don't force French locale
+    # Diacritics in non-English text should try fr_FR
+    # Only return False if it's clearly English (has many English syntax words)
+    if _DIACRITIC.search(text):
+        # Count English words - if there are many, it's English with a loanword
+        english_count = len(_ENGLISH_SYNTAX.findall(stripped))
+        if english_count >= 3:
+            return False
+        # Few/no English words with diacritics → try French locale
+        return True
     return False
 
 
