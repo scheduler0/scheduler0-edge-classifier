@@ -1291,8 +1291,18 @@ def classify(text):
         reason = "negated_schedule_like_request_needs_intent_confirmation"
 
     elif temporal and declarative:
-        decision = "reject"
-        reason = "declarative_schedule_not_request"
+        # Only reject declaratives when Duckling found temporal or recurrence pattern
+        # Declaratives with only FRENCH_TIME regex (like "9h") should clarify
+        duckling_found = duckling_has_time(entities)
+        recurrence_found = bool(RECURRENCE_PATTERN.search(text)) or (
+            french and bool(FRENCH_RECURRENCE.search(text))
+        )
+        if duckling_found or recurrence_found:
+            decision = "reject"
+            reason = "declarative_schedule_not_request"
+        else:
+            decision = "clarify"
+            reason = "temporal_signal_without_clear_request"
 
     elif temporal and request and not declarative:
         decision = "allow"
