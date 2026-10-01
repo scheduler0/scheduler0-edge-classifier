@@ -284,6 +284,89 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_format_marks_fullwidth_and_non_strings(self):
+        # A mark inside the tag is not a separator. Fullwidth letters are not
+        # the ASCII "en" prefix, and non-strings are not English either.
+        kept = {
+            "\t\ten_JM\t": "en_JM",
+            "en_BZ_extra": "en_BZ",
+            "en-ph": "en_PH",
+            " EN_IN ": "en_IN",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en\u200b_US",
+            "en_\u200bUS",
+            "en_US/",
+            "en_CA.",
+            "en_US\u200bGB",
+            "en+US",
+            "en/US",
+            "en＿US",
+            "en_US\u0301",
+            "en\ufeff_US",
+            "en_US\u202c",
+            "en\u200e",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        rejected = [
+            "ｅｎ",
+            "ｅｎ＿ＵＳ",
+            "\u202aen_US\u202c",
+            "\u202aen\u202c",
+            True,
+            False,
+            0,
+            1.5,
+            [],
+            {},
+        ]
+        for lang in DUCKLING_LANGUAGES:
+            if lang == "EN":
+                continue
+            rejected.append(lang.lower() + "\u200e")
+            rejected.append("\u202a" + lang.lower() + "\u202c")
+        for raw in rejected:
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_rejects_fullwidth_english_before_parsing(self):
+        for locale in ("ｅｎ", "\u202aen_US\u202c", "fr\u200e"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
+    def test_analyze_maps_a_marked_english_tag_to_en_gb(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en\u200b_US",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
