@@ -62,6 +62,10 @@ class ApiTests(unittest.TestCase):
             "\ufeffen_US",
             "\u00a0fr\u00a0",
             "fr\ufeff",
+            "ｅｎ",
+            "ｅｎ＿ＵＳ",
+            "\u202aen_US\u202c",
+            "fr\u200e",
         ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(

@@ -15,7 +15,7 @@ import spacy.lang
 
 from spacy.symbols import ORTH
 
-from intent import classify, nlp as english_nlp, text_looks_french
+from intent import classify, nlp as english_nlp, should_use_french_locale, text_looks_french
 
 
 # Tokenizer backends that are optional extras on top of the spaCy wheel.
@@ -154,6 +154,65 @@ CASED_STOP_LETTERS = {
 # Ancient Greek treats Greek letters as numerals. Latin does the same for dotless i.
 LETTER_NUMERALS = {"α": {"grc"}, "ı": {"la"}}
 NATIVE_DIGITS = ["०", "০", "๐", "០"]
+
+# Alphabetic stop lists with no lowercase/uppercase pair. Faroese, Nynorsk,
+# and the multilingual class are empty; the rest are caseless scripts.
+NO_CASED_ALPHA_STOP = {
+    "am", "ar", "bn", "fa", "fo", "gu", "he", "hi", "ja", "kn", "ko", "ml",
+    "mr", "ne", "nn", "sa", "si", "ta", "te", "th", "ti", "ur", "xx",
+}
+
+# "a" is a stop word. "b" is too in a smaller set.
+A_STOP_LANGUAGES = {
+    "ca", "cs", "de", "dsb", "en", "es", "fr", "ga", "hr", "hsb", "hu", "it",
+    "lb", "lij", "lt", "pl", "pt", "sk",
+}
+AB_STOP_LANGUAGES = {"ro", "sl", "sq", "yo"}
+
+# Hyphen compounds stay one token in these classes.
+HYPHEN_GLUE_LANGUAGES = {
+    "ca", "da", "de", "el", "es", "fi", "hu", "ky", "lb", "nb", "nl", "nn",
+    "pt", "ro", "sr", "sv", "tt", "vi",
+}
+EMAIL_GLUE_LANGUAGES = (HYPHEN_GLUE_LANGUAGES | {"fr", "it"}) - {"ro"}
+EMAIL_STOP_E = {"hr", "lg", "lij", "lt", "sl", "sq", "tn", "yo"}
+
+# Final dot stays on the abbreviation.
+IE_GLUE_LANGUAGES = {
+    "am", "ar", "da", "de", "en", "fa", "grc", "hu", "lb", "ms", "nl", "pt",
+    "ti", "vi",
+}
+EG_GLUE_LANGUAGES = {"am", "ar", "de", "en", "fa", "grc", "nl", "pt", "ti", "vi"}
+MR_GLUE_LANGUAGES = {
+    "am", "ar", "da", "de", "en", "fa", "fr", "grc", "hu", "nb", "nl", "nn",
+    "pt", "sl", "ti", "vi",
+}
+
+# Straight apostrophes. Curly apostrophes are covered separately.
+ITS_GLUE_LANGUAGES = {
+    "am", "ar", "bn", "da", "de", "el", "es", "fa", "fi", "grc", "hu", "nb",
+    "nl", "nn", "pl", "ro", "sl", "sr", "sv", "ti", "vi",
+}
+APOSTROPHE_PARTS = {"ky", "tt"}
+LAN_SPLIT_STOP = {"fr", "it"}
+DACCORD_SPLIT_STOP = {"fr", "it", "lb", "lij"}
+
+EM_DASH_GLUE_LANGUAGES = {
+    "ca", "da", "de", "es", "hu", "lb", "nb", "nl", "nn", "ro", "sr", "sv", "vi",
+}
+COLON_GLUE_LANGUAGES = {"fi", "sv", "vi"}
+SLASH_GLUE_LANGUAGES = {"hu", "lb", "nl", "ro", "vi"}
+UNIT_GLUE_LANGUAGES = {"grc", "ro", "vi"}
+EURO_GLUE_LANGUAGES = {"bn", "hu", "vi"}
+CLOCK_SUFFIX_SPLIT = {"ca", "es"}
+AMPM_DOT_GLUE = {"am", "ar", "fa", "grc", "ti", "vi"}
+HASH_GLUE_LANGUAGES = {"id", "ms", "nb", "nn", "vi"}
+REPEAT_PUNCT_GLUE = {"vi"}
+DASH_SPLIT_LANGUAGES = {"ca", "id", "ms", "pl"}
+PRECOMPOSED_E_STOP = {"ga", "lij", "pt", "yo"}
+
+# Duckling locales that have no spaCy language class.
+DUCKLING_WITHOUT_SPACY = {"ka", "km", "lo", "mn", "my", "sw"}
 
 # Diacritics in the French marker, and lookalikes that must stay on en_GB.
 FRENCH_DIACRITICS = "àâäçéèêëîïôùûüœæ"
@@ -829,6 +888,493 @@ class SpacyLanguageTests(unittest.TestCase):
                 else:
                     self.assertEqual(["l\u2019heure"], [token.text for token in heure])
 
+    def test_case_compounds_clocks_and_amounts(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                if code == "zh":
+                    for text in ("ABC", "Abc", "abc", "9:00am", "9h30", "09h00", "5USD", "foo_bar", "0x10", "C++"):
+                        self.assertEqual(list(text), self.token_texts(pipeline, text))
+                    continue
+
+                upper = self.round_trip(pipeline, "ABC")[0]
+                title = self.round_trip(pipeline, "Abc")[0]
+                lower = self.round_trip(pipeline, "abc")[0]
+                self.assertTrue(upper.is_upper and upper.is_ascii and upper.is_alpha)
+                self.assertTrue(title.is_title and title.is_ascii and not title.is_upper)
+                self.assertTrue(lower.is_lower and lower.is_ascii and lower.is_alpha)
+
+                for text in ("9:00am", "9h30", "09h00", "foo_bar", "0x10", "@user", "hello|world"):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertEqual(text, token.text)
+                    self.assertFalse(token.like_num)
+                    self.assertFalse(token.like_url)
+                self.assertTrue(self.round_trip(pipeline, "5USD")[0].is_upper)
+                self.assertTrue(self.round_trip(pipeline, "C++")[0].is_title)
+
+                clock = self.round_trip(pipeline, "9.30")
+                if code == "pl":
+                    self.assertEqual(["9", ".", "30"], self.texts(clock))
+                    self.assertEqual([True, False, True], [token.like_num for token in clock])
+                elif code in {"grc", "la"}:
+                    self.assertEqual(["9.30"], self.texts(clock))
+                    self.assertFalse(clock[0].like_num)
+                else:
+                    self.assertEqual(["9.30"], self.texts(clock))
+                    self.assertTrue(clock[0].like_num)
+
+                for text, split in (("9am", CLOCK_SUFFIX_SPLIT | {"en"}), ("12pm", CLOCK_SUFFIX_SPLIT | {"en"})):
+                    doc = self.round_trip(pipeline, text)
+                    if code in split:
+                        self.assertEqual([text[:-2], text[-2:]], self.texts(doc))
+                        self.assertTrue(doc[0].like_num)
+                        self.assertEqual(text == "9am" and code == "en", doc[1].is_stop)
+                    else:
+                        self.assertEqual([text], self.texts(doc))
+                        self.assertFalse(doc[0].like_num)
+
+                dotted = self.round_trip(pipeline, "12a.m.")
+                if code in CLOCK_SUFFIX_SPLIT | {"en"}:
+                    self.assertEqual(["12", "a.m."], self.texts(dotted))
+                    self.assertTrue(dotted[0].like_num)
+                elif code in AMPM_DOT_GLUE:
+                    self.assertEqual(["12a.m."], self.texts(dotted))
+                else:
+                    self.assertEqual(["12a.m", "."], self.texts(dotted))
+
+                euro = self.round_trip(pipeline, "€5")
+                if code in EURO_GLUE_LANGUAGES:
+                    self.assertEqual(["€5"], self.texts(euro))
+                    self.assertFalse(euro[0].like_num)
+                else:
+                    self.assertEqual(["€", "5"], self.texts(euro))
+                    self.assertTrue(euro[0].is_currency)
+                    self.assertEqual(code != "grc", euro[1].like_num)
+
+                pounds = self.round_trip(pipeline, "£5.00")
+                if code in EURO_GLUE_LANGUAGES:
+                    self.assertEqual(["£5.00"], self.texts(pounds))
+                elif code == "pl":
+                    self.assertEqual(["£", "5", ".", "00"], self.texts(pounds))
+                elif code in {"grc", "la"}:
+                    self.assertEqual(["£", "5.00"], self.texts(pounds))
+                    self.assertFalse(pounds[1].like_num)
+                else:
+                    self.assertEqual(["£", "5.00"], self.texts(pounds))
+                    self.assertTrue(pounds[0].is_currency)
+                    self.assertTrue(pounds[1].like_num)
+
+                compound = self.round_trip(pipeline, "well-known")
+                if code in HYPHEN_GLUE_LANGUAGES:
+                    self.assertEqual(["well-known"], self.texts(compound))
+                else:
+                    self.assertEqual(["well", "-", "known"], self.texts(compound))
+                    self.assertEqual(code == "en", compound[0].is_stop)
+
+                email = self.round_trip(pipeline, "e-mail")
+                if code in EMAIL_GLUE_LANGUAGES:
+                    self.assertEqual(["e-mail"], self.texts(email))
+                elif code == "ro":
+                    self.assertEqual(["e-", "mail"], self.texts(email))
+                else:
+                    self.assertEqual(["e", "-", "mail"], self.texts(email))
+                    self.assertEqual(code in EMAIL_STOP_E, email[0].is_stop)
+
+    def test_ordinals_units_dates_and_abbreviations(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                if code == "zh":
+                    for text in ("1st", "2nd", "4th", "21st", "10,000", "1.000", "1'000", "10km", "5kg", "2026/09/30", "30.09.2026", "i.e.", "e.g.", "U.S.", "Mr.", "C#", "#1", "n°5"):
+                        self.assertEqual(list(text), self.token_texts(pipeline, text))
+                    continue
+
+                for text in ("1st", "2nd", "4th", "21st"):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertEqual(text, token.text)
+                    like_num = code == "en" or (code == "tn" and text == "4th")
+                    self.assertEqual(like_num, token.like_num)
+
+                thousands = self.round_trip(pipeline, "10,000")
+                self.assertEqual(["10,000"], self.texts(thousands))
+                self.assertEqual(code not in {"grc", "la", "ne"}, thousands[0].like_num)
+                dotted = self.round_trip(pipeline, "1.000")
+                if code == "pl":
+                    self.assertEqual(["1", ".", "000"], self.texts(dotted))
+                else:
+                    self.assertEqual(["1.000"], self.texts(dotted))
+                    self.assertEqual(code not in {"grc", "la"}, dotted[0].like_num)
+                apostrophe = self.round_trip(pipeline, "1'000")
+                self.assertEqual(["1'000"], self.texts(apostrophe))
+                self.assertFalse(apostrophe[0].like_num)
+
+                for text in ("10km", "5kg"):
+                    doc = self.round_trip(pipeline, text)
+                    if code in UNIT_GLUE_LANGUAGES:
+                        self.assertEqual([text], self.texts(doc))
+                        self.assertFalse(doc[0].like_num)
+                    else:
+                        self.assertEqual([text[:-2], text[-2:]], self.texts(doc))
+                        self.assertTrue(doc[0].like_num)
+
+                slash_date = self.round_trip(pipeline, "2026/09/30")
+                if code in {"de", "id", "ms"}:
+                    self.assertEqual(["2026", "/", "09", "/", "30"], self.texts(slash_date))
+                    self.assertTrue(all(token.like_num for token in slash_date if token.text != "/"))
+                else:
+                    self.assertEqual(["2026/09/30"], self.texts(slash_date))
+                    self.assertEqual(code == "fa", slash_date[0].like_num)
+                dotted_date = self.round_trip(pipeline, "30.09.2026")
+                if code == "pl":
+                    self.assertEqual(["30", ".", "09", ".", "2026"], self.texts(dotted_date))
+                else:
+                    self.assertEqual(["30.09.2026"], self.texts(dotted_date))
+                    self.assertEqual(code not in {"grc", "la"}, dotted_date[0].like_num)
+
+                ie = self.round_trip(pipeline, "i.e.")
+                eg = self.round_trip(pipeline, "e.g.")
+                self.assertEqual(["i.e."] if code in IE_GLUE_LANGUAGES else ["i.e", "."], self.texts(ie))
+                self.assertEqual(["e.g."] if code in EG_GLUE_LANGUAGES else ["e.g", "."], self.texts(eg))
+
+                us = self.round_trip(pipeline, "U.S.")
+                if code in {"lt", "sr"}:
+                    self.assertEqual(["U.S", "."], self.texts(us))
+                elif code == "pl":
+                    self.assertEqual(["U", ".", "S", "."], self.texts(us))
+                    self.assertTrue(us[0].is_stop)
+                elif code == "sl":
+                    self.assertEqual(["U.", "S."], self.texts(us))
+                else:
+                    self.assertEqual(["U.S."], self.texts(us))
+                    self.assertTrue(us[0].is_title)
+
+                mr = self.round_trip(pipeline, "Mr.")
+                self.assertEqual(["Mr."] if code in MR_GLUE_LANGUAGES else ["Mr", "."], self.texts(mr))
+
+                sharp = self.round_trip(pipeline, "C#")
+                if code == "vi":
+                    self.assertEqual(["C#"], self.texts(sharp))
+                else:
+                    self.assertEqual(["C", "#"], self.texts(sharp))
+                    self.assertEqual(code in {"ro", "sl", "sq"}, sharp[0].is_stop)
+                    self.assertEqual(code == "la", sharp[0].like_num)
+
+                numbered = self.round_trip(pipeline, "#1")
+                if code in HASH_GLUE_LANGUAGES:
+                    self.assertEqual(["#1"], self.texts(numbered))
+                    self.assertFalse(numbered[0].like_num)
+                else:
+                    self.assertEqual(["#", "1"], self.texts(numbered))
+                    self.assertTrue(numbered[0].is_punct)
+                    self.assertEqual(code != "grc", numbered[1].like_num)
+
+                numero = self.round_trip(pipeline, "n°5")
+                if code in {"hu", "nb", "nn", "ro", "vi"}:
+                    self.assertEqual(["n°5"], self.texts(numero))
+                elif code in {"es", "fr", "it"}:
+                    self.assertEqual(["n°", "5"], self.texts(numero))
+                    self.assertTrue(numero[1].like_num)
+                else:
+                    self.assertEqual(["n", "°", "5"], self.texts(numero))
+                    self.assertEqual(code in {"sl", "yo"}, numero[0].is_stop)
+                    self.assertEqual(code != "grc", numero[2].like_num)
+
+    def test_apostrophes_quotes_and_repeated_punctuation(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                if code == "zh":
+                    for text in ("it's", "I'm", "don't", "l'an", "d'accord", "qu'il", "\"hello\"", "'hello'", "«hello»", "(hello)", "[hello]", "!!!", "??", "...", "…", "“", "”"):
+                        self.assertEqual(list(text), self.token_texts(pipeline, text))
+                    continue
+
+                its = self.round_trip(pipeline, "it's")
+                if code == "en":
+                    self.assertEqual(["it", "'s"], self.texts(its))
+                    self.assertTrue(all(token.is_stop for token in its))
+                elif code in {"ca", "fr"}:
+                    self.assertEqual(["it'", "s"], self.texts(its))
+                elif code in {"lt", "lv"}:
+                    self.assertEqual(["it", "'s"], self.texts(its))
+                    self.assertTrue(its[0].is_stop)
+                    self.assertFalse(its[1].is_stop)
+                elif code in ITS_GLUE_LANGUAGES:
+                    self.assertEqual(["it's"], self.texts(its))
+                    self.assertFalse(its[0].is_stop)
+                else:
+                    self.assertEqual(["it", "'s"], self.texts(its))
+                    self.assertFalse(any(token.is_stop for token in its))
+
+                im = self.round_trip(pipeline, "I'm")
+                if code == "en":
+                    self.assertEqual(["I", "'m"], self.texts(im))
+                    self.assertTrue(all(token.is_stop for token in im))
+                elif code == "ca":
+                    self.assertEqual(["I", "'m"], self.texts(im))
+                    self.assertTrue(im[0].is_stop)
+                    self.assertFalse(im[1].is_stop)
+                elif code in {"fr", "it", "lij"}:
+                    self.assertEqual(["I'", "m"], self.texts(im))
+                elif code in APOSTROPHE_PARTS:
+                    self.assertEqual(["I", "'", "m"], self.texts(im))
+                    self.assertTrue(im[1].is_quote)
+                else:
+                    self.assertEqual(["I'm"], self.texts(im))
+
+                dont = self.round_trip(pipeline, "don't")
+                if code == "en":
+                    self.assertEqual(["do", "n't"], self.texts(dont))
+                    self.assertTrue(all(token.is_stop for token in dont))
+                elif code == "ca":
+                    self.assertEqual(["don", "'t"], self.texts(dont))
+                elif code in {"fr", "it", "lij"}:
+                    self.assertEqual(["don'", "t"], self.texts(dont))
+                elif code in APOSTROPHE_PARTS:
+                    self.assertEqual(["don", "'", "t"], self.texts(dont))
+                elif code == "yo":
+                    self.assertEqual(["don't"], self.texts(dont))
+                    self.assertTrue(dont[0].like_num)
+                else:
+                    self.assertEqual(["don't"], self.texts(dont))
+                    self.assertFalse(dont[0].like_num)
+
+                lan = self.round_trip(pipeline, "l'an")
+                if code in LAN_SPLIT_STOP:
+                    self.assertEqual(["l'", "an"], self.texts(lan))
+                    self.assertTrue(lan[0].is_stop)
+                elif code == "lij":
+                    self.assertEqual(["l'", "an"], self.texts(lan))
+                    self.assertTrue(lan[0].is_stop and lan[1].is_stop)
+                elif code == "ca":
+                    self.assertEqual(["l'", "an"], self.texts(lan))
+                    self.assertFalse(lan[0].is_stop)
+                elif code in APOSTROPHE_PARTS:
+                    self.assertEqual(["l", "'", "an"], self.texts(lan))
+                else:
+                    self.assertEqual(["l'an"], self.texts(lan))
+
+                accord = self.round_trip(pipeline, "d'accord")
+                if code in DACCORD_SPLIT_STOP:
+                    self.assertEqual(["d'", "accord"], self.texts(accord))
+                    self.assertTrue(accord[0].is_stop)
+                elif code == "ca":
+                    self.assertEqual(["d'", "accord"], self.texts(accord))
+                    self.assertFalse(accord[0].is_stop)
+                elif code in APOSTROPHE_PARTS:
+                    self.assertEqual(["d", "'", "accord"], self.texts(accord))
+                else:
+                    self.assertEqual(["d'accord"], self.texts(accord))
+
+                quil = self.round_trip(pipeline, "qu'il")
+                if code == "fr":
+                    self.assertEqual(["qu'", "il"], self.texts(quil))
+                    self.assertTrue(quil[0].is_stop and quil[1].is_stop)
+                elif code == "it":
+                    self.assertEqual(["qu'", "il"], self.texts(quil))
+                    self.assertTrue(quil[1].is_stop)
+                    self.assertFalse(quil[0].is_stop)
+                elif code in {"ca", "lij"}:
+                    self.assertEqual(["qu'", "il"], self.texts(quil))
+                    self.assertFalse(quil[0].is_stop or quil[1].is_stop)
+                elif code in APOSTROPHE_PARTS:
+                    self.assertEqual(["qu", "'", "il"], self.texts(quil))
+                else:
+                    self.assertEqual(["qu'il"], self.texts(quil))
+
+                quoted = self.round_trip(pipeline, '"hello"')
+                if code == "vi":
+                    self.assertEqual(['"hello"'], self.texts(quoted))
+                else:
+                    self.assertEqual(['"', "hello", '"'], self.texts(quoted))
+                    self.assertTrue(quoted[0].is_quote and quoted[0].is_left_punct and quoted[0].is_right_punct)
+
+                single = self.round_trip(pipeline, "'hello'")
+                if code == "vi":
+                    self.assertEqual(["'hello'"], self.texts(single))
+                elif code == "el":
+                    self.assertEqual(["'", "hell", "o'"], self.texts(single))
+                elif code == "fi":
+                    self.assertEqual(["'", "hello'"], self.texts(single))
+                else:
+                    self.assertEqual(["'", "hello", "'"], self.texts(single))
+                    self.assertTrue(single[0].is_quote)
+
+                guillemet = self.round_trip(pipeline, "«hello»")
+                if code == "vi":
+                    self.assertEqual(["«hello»"], self.texts(guillemet))
+                else:
+                    self.assertEqual(["«", "hello", "»"], self.texts(guillemet))
+                    self.assertTrue(guillemet[0].is_left_punct and guillemet[2].is_right_punct)
+
+                for text in ("(hello)", "[hello]"):
+                    wrapped = self.round_trip(pipeline, text)
+                    if code == "vi":
+                        self.assertEqual([text], self.texts(wrapped))
+                        self.assertFalse(wrapped[0].is_punct)
+                    else:
+                        self.assertEqual([text[0], "hello", text[-1]], self.texts(wrapped))
+                        self.assertTrue(wrapped[0].is_bracket and wrapped[0].is_left_punct)
+                        self.assertTrue(wrapped[-1].is_bracket and wrapped[-1].is_right_punct)
+
+                for text in ("!!!", "??"):
+                    marks = self.round_trip(pipeline, text)
+                    if code in REPEAT_PUNCT_GLUE:
+                        self.assertEqual([text], self.texts(marks))
+                    else:
+                        self.assertEqual(list(text), self.texts(marks))
+                    self.assertTrue(all(token.is_punct for token in marks))
+                ellipsis = self.round_trip(pipeline, "...")
+                self.assertEqual(["..."], self.texts(ellipsis))
+                self.assertTrue(ellipsis[0].is_punct)
+                single_ellipsis = self.round_trip(pipeline, "…")[0]
+                self.assertTrue(single_ellipsis.is_punct)
+                self.assertFalse(single_ellipsis.is_stop)
+                for text, left in (("“", True), ("”", False)):
+                    quote = self.round_trip(pipeline, text)[0]
+                    self.assertTrue(quote.is_quote and quote.is_punct)
+                    self.assertEqual(left, quote.is_left_punct)
+                    self.assertEqual(not left, quote.is_right_punct)
+                    self.assertFalse(quote.is_stop)
+
+    def test_spaces_emoji_modifiers_and_degree_clusters(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                pair = self.round_trip(pipeline, "a  b")
+                self.assertEqual(["a", " ", "b"], self.texts(pair))
+                self.assertEqual(" ", pair[0].whitespace_)
+                self.assertTrue(pair[1].is_space)
+                self.assertEqual(code in A_STOP_LANGUAGES or code in AB_STOP_LANGUAGES, pair[0].is_stop)
+                self.assertEqual(code in AB_STOP_LANGUAGES, pair[2].is_stop)
+
+                for text in ("a\tb", "a\u00a0b"):
+                    spaced = self.round_trip(pipeline, text)
+                    self.assertEqual(["a", text[1], "b"], self.texts(spaced))
+                    self.assertEqual("", spaced[0].whitespace_)
+                    self.assertTrue(spaced[1].is_space)
+
+                if code == "zh":
+                    self.assertEqual(list("hello\nworld"), self.token_texts(pipeline, "hello\nworld"))
+                    self.assertEqual(list("hello/world"), self.token_texts(pipeline, "hello/world"))
+                    self.assertEqual(list("hello:world"), self.token_texts(pipeline, "hello:world"))
+                    self.assertEqual(list("hello\u2014world"), self.token_texts(pipeline, "hello\u2014world"))
+                    self.assertEqual(list("e\u0301"), self.token_texts(pipeline, "e\u0301"))
+                    self.assertEqual(["👋", "🏻"], self.token_texts(pipeline, "👋🏻"))
+                    self.assertEqual(["5", "°"], self.token_texts(pipeline, "5°"))
+                    self.assertEqual(["-", "-"], self.token_texts(pipeline, "--"))
+                    self.assertEqual(["-", "-", "-"], self.token_texts(pipeline, "---"))
+                    continue
+
+                lines = self.round_trip(pipeline, "hello\nworld")
+                self.assertEqual(["hello", "\n", "world"], self.texts(lines))
+                self.assertTrue(lines[1].is_space)
+                self.assertFalse(lines[0].is_stop or lines[2].is_stop)
+
+                slash = self.round_trip(pipeline, "hello/world")
+                colon = self.round_trip(pipeline, "hello:world")
+                dash = self.round_trip(pipeline, "hello\u2014world")
+                self.assertEqual(
+                    ["hello/world"] if code in SLASH_GLUE_LANGUAGES else ["hello", "/", "world"],
+                    self.texts(slash),
+                )
+                self.assertEqual(
+                    ["hello:world"] if code in COLON_GLUE_LANGUAGES else ["hello", ":", "world"],
+                    self.texts(colon),
+                )
+                self.assertEqual(
+                    ["hello\u2014world"] if code in EM_DASH_GLUE_LANGUAGES else ["hello", "\u2014", "world"],
+                    self.texts(dash),
+                )
+
+                combining = self.round_trip(pipeline, "e\u0301")[0]
+                self.assertEqual("e\u0301", combining.text)
+                self.assertTrue(combining.is_lower)
+                self.assertFalse(combining.is_alpha)
+                acute = self.round_trip(pipeline, "é")[0]
+                self.assertTrue(acute.is_alpha and acute.is_lower)
+                self.assertEqual(code in PRECOMPOSED_E_STOP, acute.is_stop)
+
+                wave = self.round_trip(pipeline, "👋🏻")
+                coder = self.round_trip(pipeline, "👨\u200d💻")
+                if code in {"hu", "vi"}:
+                    self.assertEqual(["👋🏻"], self.texts(wave))
+                    self.assertEqual(["👨\u200d💻"], self.texts(coder))
+                else:
+                    self.assertEqual(["👋", "🏻"], self.texts(wave))
+                    self.assertEqual(["👨", "\u200d", "💻"], self.texts(coder))
+
+                degree = self.round_trip(pipeline, "5°")
+                if code in {"hu", "it", "nb", "ro", "vi"}:
+                    self.assertEqual(["5°"], self.texts(degree))
+                    self.assertFalse(degree[0].like_num)
+                else:
+                    self.assertEqual(["5", "°"], self.texts(degree))
+                    self.assertEqual(code != "grc", degree[0].like_num)
+                    self.assertFalse(degree[1].is_punct)
+
+                doubled = self.round_trip(pipeline, "--")
+                if code in DASH_SPLIT_LANGUAGES | {"sl"}:
+                    self.assertEqual(["-", "-"], self.texts(doubled))
+                else:
+                    self.assertEqual(["--"], self.texts(doubled))
+                    self.assertTrue(doubled[0].is_punct)
+                tripled = self.round_trip(pipeline, "---")
+                if code in DASH_SPLIT_LANGUAGES:
+                    self.assertEqual(["-", "-", "-"], self.texts(tripled))
+                elif code == "sl":
+                    self.assertEqual(["-", "--"], self.texts(tripled))
+                else:
+                    self.assertEqual(["---"], self.texts(tripled))
+
+    def test_uppercased_stop_words_stay_stops(self):
+        caseless = set()
+        for code, pipeline in self.pipelines.items():
+            words = spacy.util.get_lang_class(code).Defaults.stop_words
+            cased = sorted(
+                word
+                for word in words
+                if word.isalpha() and " " not in word and word != word.upper()
+            )
+            if not cased:
+                caseless.add(code)
+                continue
+            self.assertIsNotNone(pipeline)
+            word = cased[0]
+            with self.subTest(code=code, word=word):
+                original = self.round_trip(pipeline, word)
+                upper = self.round_trip(pipeline, word.upper())
+                if code == "zh":
+                    self.assertGreater(len(upper), 1)
+                    self.assertTrue(all(not token.is_stop for token in upper))
+                    self.assertTrue(all(token.is_alpha for token in upper))
+                    continue
+                self.assertEqual([word], self.texts(original))
+                self.assertTrue(original[0].is_stop)
+                self.assertEqual([word.upper()], self.texts(upper))
+                self.assertTrue(upper[0].is_stop)
+                self.assertTrue(upper[0].is_upper)
+        self.assertEqual(NO_CASED_ALPHA_STOP, caseless)
+
+    def test_discovered_codes_match_duckling_gaps(self):
+        self.assertEqual(
+            DUCKLING_WITHOUT_SPACY,
+            set(DUCKLING_LANGUAGE_SAMPLES) - set(self.codes),
+        )
+        for code in DUCKLING_WITHOUT_SPACY:
+            with self.subTest(code=code):
+                with self.assertRaises(ImportError):
+                    spacy.util.get_lang_class(code)
+
+    def texts(self, doc):
+        return [token.text for token in doc]
+
+    def token_texts(self, pipeline, text):
+        return self.texts(self.round_trip(pipeline, text))
+
     def round_trip(self, pipeline, text):
         doc = pipeline(text)
         self.assertEqual(text, doc.text)
@@ -995,6 +1541,73 @@ class MultilingualClassifyTests(unittest.TestCase):
         self.assertEqual("reject", joiner["decision"])
         self.assertEqual("not_a_schedule_request", joiner["reason"])
         self.assertEqual("PROPN", joiner["features"]["root"]["pos"])
+
+    def test_clock_abbreviation_and_symbol_edges_classify_stably(self):
+        # Decisions from en_core_web_sm with no Duckling entity. French clock
+        # forms are temporal; a few ASCII strings are subject-less verbs.
+        expected = {
+            "9h30": ("clarify", "temporal_signal_without_clear_request", "NUM", False),
+            "09h00": ("clarify", "temporal_signal_without_clear_request", "NUM", False),
+            "9am": ("reject", "not_a_schedule_request", "NUM", False),
+            "12pm": ("reject", "not_a_schedule_request", "NOUN", False),
+            "12a.m.": ("reject", "not_a_schedule_request", "NUM", False),
+            "Mr.": ("reject", "not_a_schedule_request", "PROPN", False),
+            "i.e.": ("reject", "not_a_schedule_request", "X", False),
+            "e.g.": ("reject", "not_a_schedule_request", "ADV", False),
+            "U.S.": ("reject", "not_a_schedule_request", "PROPN", False),
+            "it's": ("reject", "not_a_schedule_request", "AUX", True),
+            "I'm": ("reject", "not_a_schedule_request", "AUX", True),
+            "don't": ("clarify", "request_without_temporal_signal", "VERB", False),
+            "l'an": ("reject", "not_a_schedule_request", "ADJ", False),
+            "d'accord": ("reject", "not_a_schedule_request", "PROPN", False),
+            "qu'il": ("reject", "not_a_schedule_request", "PROPN", False),
+            "10km": ("reject", "not_a_schedule_request", "NOUN", False),
+            "5kg": ("reject", "not_a_schedule_request", "NOUN", False),
+            "€5": ("reject", "not_a_schedule_request", "NUM", False),
+            "£5.00": ("reject", "not_a_schedule_request", "NUM", False),
+            "well-known": ("clarify", "request_without_temporal_signal", "VERB", False),
+            "e-mail": ("reject", "not_a_schedule_request", "X", False),
+            "1st": ("reject", "not_a_schedule_request", "NOUN", False),
+            "2nd": ("reject", "not_a_schedule_request", "ADJ", False),
+            "4th": ("reject", "not_a_schedule_request", "ADJ", False),
+            "21st": ("reject", "not_a_schedule_request", "NOUN", False),
+            "10,000": ("reject", "not_a_schedule_request", "NUM", False),
+            "30.09.2026": ("reject", "not_a_schedule_request", "NUM", False),
+            "2026/09/30": ("reject", "not_a_schedule_request", "NUM", False),
+            "n°5": ("reject", "not_a_schedule_request", "CCONJ", False),
+            "C++": ("reject", "not_a_schedule_request", "NOUN", False),
+            "C#": ("reject", "not_a_schedule_request", "NOUN", False),
+            "@user": ("reject", "not_a_schedule_request", "ADV", False),
+            "#1": ("reject", "not_a_schedule_request", "NUM", False),
+            "0x10": ("reject", "not_a_schedule_request", "X", False),
+            "«hello»": ("reject", "not_a_schedule_request", "INTJ", False),
+            "e\u0301": ("clarify", "request_without_temporal_signal", "VERB", False),
+            "…": ("reject", "not_a_schedule_request", "PUNCT", False),
+            "!!!": ("reject", "not_a_schedule_request", "PUNCT", False),
+            "(hello)": ("reject", "not_a_schedule_request", "INTJ", False),
+            "foo_bar": ("reject", "not_a_schedule_request", "PROPN", False),
+            "5°": ("reject", "not_a_schedule_request", "NUM", False),
+            "100°C": ("reject", "not_a_schedule_request", "NOUN", False),
+            "👋🏻": ("reject", "not_a_schedule_request", "NOUN", True),
+        }
+        for text, (decision, reason, pos, subject) in expected.items():
+            with self.subTest(text=text):
+                self.assertEqual(text in {"9h30", "09h00"}, text_looks_french(text))
+                self.assertEqual(text in {"9h30", "09h00"}, should_use_french_locale(text))
+                with patch("intent.requests.post") as post:
+                    post.return_value.json.return_value = []
+                    post.return_value.raise_for_status.return_value = None
+                    result = classify(text)
+                locale = post.call_args.kwargs["data"]["locale"]
+                self.assertEqual("fr_FR" if text in {"9h30", "09h00"} else "en_GB", locale)
+                self.assertEqual(text, result["text"])
+                self.assertEqual((decision, reason), (result["decision"], result["reason"]))
+                self.assertEqual(pos, result["features"]["root"]["pos"])
+                self.assertEqual(subject, result["features"]["has_subject"])
+                self.assertEqual(
+                    reason == "request_without_temporal_signal",
+                    result["features"]["looks_like_request"],
+                )
 
     def test_diacritics_outside_the_french_class_stay_on_english(self):
         # ä and û are tagged as verbs, but the French marker classifies them
