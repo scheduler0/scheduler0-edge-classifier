@@ -57,13 +57,21 @@ Its implementation uses these imperfect heuristics:
 - don't/do not/dont/never/stop/cancel/remove plus a temporal signal clarifies.
   "stop by", "don't forget", "don't let me forget", and discourse "never mind"
   are not treated as canceling the request. Rhetorical proposal negation
-  ("why don't we", "couldn't we", "don't you think we should") and contrastive
+  ("why don't we", "couldn't we", "don't you think we should", "why not Thursday",
+  "why not do Thursday", "couldn't we do Thursday") and contrastive
   time ("remind me Friday, not Monday", "not tomorrow — remind me Friday")
-  are not cancellations. Bare "not" attached to a noun or adverb is not one
-  either. "I will not attend" still clarifies. "skip" / "avoid" / "refrain
-  from" plus a meeting, reminder, or emailing clarifies. Past and
-  confirmation questions ("did you schedule", "don't we meet", "wasn't the
-  meeting moved", "is tomorrow a holiday?") are rejected.
+  are not cancellations. "I wouldn't mind meeting" and "wouldn't mind a call"
+  accept a slot. Bare "not" attached to a noun or adverb is not one
+  either. "I will not attend" still clarifies. call off / hold off / scratch /
+  scrap / kill / drop the meeting, bare "forget the meeting", "no meetings",
+  and "skip Friday" clarify. "Drop me a reminder" stays a request.
+  "Remind me what/when/where" is informational. "Could ya" counts as "could you".
+  "We should sync" is a meeting unless sync takes an object. "It'd be great to
+  meet", "I'm gonna need a reminder", "the team should meet", and "I'd like us
+  to meet" are requests. "Send volumes grow" is a headline, not a command.
+  "skip" / "avoid" / "refrain from" plus a meeting, reminder, or emailing
+  clarifies. Past and confirmation questions ("did you schedule", "don't we
+  meet", "wasn't the meeting moved", "is tomorrow a holiday?") are rejected.
 - Decision order: informational question or informational request -> reject;
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
@@ -74,11 +82,16 @@ Its implementation uses these imperfect heuristics:
   trusted for French. Duckling is called with locale fr_FR for that text.
   Soft proposals are requests: "pourquoi ne pas se voir", "et si on se voyait",
   "serait-il possible de se voir", "est-ce qu'on peut", "je te propose",
-  "ça te dit", "ça te dirait", "ça te va", "on se fait un point ... ?",
+  "ça te dit", "ça te dirait", "ça te va", "ça te tenterait",
+  "on se fait un point ... ?", "on se fait une visio ... ?",
+  "pourrait-on se voir", "on peut se voir", "si on se voyait",
+  "ce serait bien de se voir", "je préférerais qu'on se voie",
+  "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
   "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
   "Pourquoi ne pas" is not a cancellation and not an informational question.
-  "Pourquoi on se voit ?" and "c'est quand" are informational. "a lieu" is a
-  statement ("le standup a lieu tous les matins").
+  "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
+  without "?" are not requests. "Pourquoi on se voit ?" and "c'est quand" are
+  informational. "a lieu" is a statement ("le standup a lieu tous les matins").
 """
 
 

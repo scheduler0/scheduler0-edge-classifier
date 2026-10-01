@@ -45,12 +45,12 @@ REQUEST_PHRASES = re.compile(
 # challenges, not refusals. "can't" and "won't" are irregular contractions.
 _MODAL_YOU_RE = (
     r"\b(?:can't|won't|(?:can|could|would|will|should|might|may)"
-    r"(?:n't|\s+not)?)\s+you\b"
+    r"(?:n't|\s+not)?)\s+(?:you|ya)\b"
 )
 QUESTION_REQUEST = re.compile(_MODAL_YOU_RE, re.I)
 POLITE_CHALLENGE = re.compile(
     r"\b(?:can't|won't|(?:can|could|would|will|should|might|may)"
-    r"(?:n't|\s+not))\s+you\b",
+    r"(?:n't|\s+not))\s+(?:you|ya)\b",
     re.I,
 )
 
@@ -65,7 +65,16 @@ GROUP_PROPOSAL = re.compile(
     r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
     r"(?:schedule|book|reschedule|move)\b"
     r"|"
-    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+meet\b"
+    # "sync" is a meeting only when it has no object: "sync the files" is not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\bwe\s+(?:might|may|could|should)\s+want\s+to\s+(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:the\s+)?(?:team|group|crew)\s+"
+    r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+meet\b"
     r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
     re.I,
 )
@@ -84,6 +93,9 @@ NEED_TO_SCHEDULE = re.compile(
     r"|"
     r"\b(?:someone|somebody)\s+should\s+"
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
+    r"|"
+    r"\b(?:someone|somebody)\s+needs?\s+to\s+"
+    r"(?:remind|email|schedule|book|ping|notify|send|call)\b"
     r"|"
     r"^\s*(?:someone|somebody)\s+"
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
@@ -104,10 +116,16 @@ NEED_TO_SCHEDULE = re.compile(
 # Polite hedges and colloquial proposals that never use "can you" / "let's".
 HEDGED_PROPOSAL = re.compile(
     r"\b(?:wondering|hoping)\b.{0,50}\b(?:we|you|i)\s+(?:could|can|would)\s+"
-    r"(?:meet|schedule|book|remind|reschedule)\b"
+    r"(?:meet|schedule|book|remind|reschedule|sync)\b"
+    r"|"
+    r"\b(?:wondering|hoping)\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:meeting|call|sync|reminder)\b"
     r"|"
     r"\bany\s+chance\b.{0,40}\b(?:we|you|i)\s+(?:could|can|would)\s+"
-    r"(?:meet|schedule|book|remind|reschedule)\b"
+    r"(?:meet|schedule|book|remind|reschedule|sync)\b"
+    r"|"
+    r"\bany\s+chance\s+of\s+(?:(?:a|an|the)\s+)?"
+    r"(?:meeting|scheduling|booking|syncing)\b"
     r"|"
     r"\bmind\s+if\s+(?:we|i|you)\s+(?:meet|schedule|book|reschedule)\b"
     r"|"
@@ -149,6 +167,9 @@ HEDGED_PROPOSAL = re.compile(
     r"|"
     r"\bi\s+prefer\s+to\s+(?:meet|schedule|book|reschedule)\b"
     r"|"
+    r"\bi\s+prefer\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|reminder|appointment)\b"
+    r"|"
     r"\bmind\s+(?:remind\w*|schedul\w*|book\w*|reschedul\w*)\b"
     r"|"
     r"\bi\s+could\s+use\s+(?:a|an|the)\s+"
@@ -157,8 +178,8 @@ HEDGED_PROPOSAL = re.compile(
     r"\bit(?:['’]d|\s+would)\s+help\s+if\s+(?:you|we|someone)\s+"
     r"(?:remind\w*|schedul\w*|book\w*|met|meet)\b"
     r"|"
-    r"\b(?:it\s+)?would\s+be\s+(?:good|great|nice)\s+to\s+"
-    r"(?:meet|schedule|book|reschedule)\b"
+    r"\b(?:it(?:['’]d|\s+would)|would)\s+be\s+(?:good|great|nice)\s+to\s+"
+    r"(?:meet|schedule|book|reschedule|sync)\b"
     r"|"
     r"\bany\s+possibility\s+of\s+"
     r"(?:meeting|scheduling|booking|rescheduling)\b"
@@ -170,7 +191,20 @@ HEDGED_PROPOSAL = re.compile(
     r"(?:call|meeting|sync|chat)\b"
     r"|"
     r"\byou\s+(?:might|may|could)\s+want\s+to\s+"
-    r"(?:remind|email|schedule|book|ping|notify|send|call|meet)\b",
+    r"(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
+    r"|"
+    # "I wouldn't mind meeting" / "Wouldn't mind a call" accepts, it does not cancel.
+    r"\b(?:i\s+)?(?:would(?:n't|\s+not)|do(?:n't|\s+not)|dont)\s+mind\s+"
+    r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|syncing\b|"
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)",
+    re.I,
+)
+
+# Same span as the willing-mind alternative above, subtracted before negation.
+WILLING_MIND = re.compile(
+    r"\b(?:i\s+)?(?:would(?:n't|\s+not)|do(?:n't|\s+not)|dont)\s+mind\s+"
+    r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|syncing\b|"
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)",
     re.I,
 )
 
@@ -193,7 +227,17 @@ RHETORICAL_PROPOSAL = re.compile(
     r"(?:meet|schedule|book|reschedule|move)\b"
     r"|"
     r"\bwould(?:n't|\s+not)\s+it\s+be\s+(?:better|possible|good|okay|ok)\s+to\s+"
-    r"(?:meet|schedule|book|reschedule)\b",
+    r"(?:meet|schedule|book|reschedule)\b"
+    r"|"
+    # "Why not Thursday" / "why not do Thursday" proposes a slot.
+    # "Why not the gym" does not: a determiner or non-time noun stays a question.
+    r"^\s*why\s+not\s+(?:do\s+)?"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
+    r"|"
+    r"\b(?:could|would|should)(?:n't|\s+not)\s+we\s+do\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b",
     re.I,
 )
 
@@ -261,7 +305,20 @@ FIRST_PERSON_SCHEDULE = re.compile(
     r"(?:reminder|meeting|call|sync|appointment)\b"
     r"|"
     r"\bi\s+wanted\s+to\s+"
-    r"(?:schedule|book|remind|meet|move|reschedule)\b",
+    r"(?:schedule|book|remind|meet|move|reschedule)\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+like\s+(?:for\s+)?(?:us|the\s+team)\s+to\s+"
+    r"(?:meet|sync)\b(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\bi\s+want\s+to\s+be\s+reminded\b"
+    r"|"
+    r"\bi\s+want\s+reminding\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+appreciate\s+it\s+if\s+(?:you|someone)\s+"
+    r"(?:reminded|scheduled|booked)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+(?:gonna|going\s+to)\s+need\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b",
     re.I,
 )
 
@@ -289,6 +346,15 @@ POLITE_INDIRECT = re.compile(
     r"(?:book|schedule|reschedule|meet|remind|email|send|ping|notify|call)\b"
     r"|"
     r"\b(?:can|could|may|might)\s+i\s+(?:get|have)\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b"
+    r"|"
+    r"\bdo\s+you\s+want\s+to\s+(?:meet|schedule|book|sync|reschedule)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\bwould\s+you\s+like\s+to\s+(?:meet|schedule|book|sync|reschedule)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\bwould\s+you\s+like\s+(?:a|an|the)\s+"
     r"(?:reminder|meeting|call|sync|appointment)\b"
     r"|"
     r"\b(?:be|make)\s+sure\s+to\s+"
@@ -346,7 +412,23 @@ RECURRENCE_PATTERN = re.compile(
 SOFT_CANCEL = re.compile(
     r"\b(?:skip|avoid|refrain\s+from)\b.{0,50}\b"
     r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|"
-    r"scheduling|emailing|reminding|notifying|booking)\b",
+    r"scheduling|emailing|reminding|notifying|booking)\b"
+    r"|"
+    r"\b(?:call\s+off|hold\s+off|scratch|scrap|kill)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|bookings?)\b"
+    r"|"
+    r"\bdrop\s+(?:the|our|my|that|this)\s+(?:\w+\s+){0,3}"
+    r"(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
+    r"|"
+    # "Forget the Friday meeting" cancels. "Don't forget the meeting" does not.
+    r"(?<!don't )(?<!don’t )(?<!dont )(?<!do not )"
+    r"\bforget\s+(?:about\s+)?(?:the|our|my|that|this)\s+"
+    r"(?:\w+\s+){0,3}(?:meetings?|reminders?|standups?|syncs?|calls?)\b"
+    r"|"
+    r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
+    r"|"
+    r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday)\b",
     re.I,
 )
 
@@ -613,7 +695,7 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\bserait-il\s+possible\s+de\s+(?:se\s+voir|se\s+retrouver|"
     r"se\s+r[eé]unir|planifier|programmer|r[eé]server|bloquer|caler)\b"
     r"|"
-    r"\bet\s+si\s+(?:on|nous)\s+(?:se\s+)?"
+    r"\b(?:et\s+)?si\s+(?:on|nous)\s+(?:se\s+)?"
     r"(?:voyait|voyions|retrouvait|retrouvions|r[eé]unissait|calait|planifiait)\b"
     r"|"
     r"\bpourquoi\s+ne\s+pas\s+(?:se\s+voir|se\s+retrouver|se\s+r[eé]unir|"
@@ -639,7 +721,23 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\b(?:ça|ca)\s+(?:te|vous)\s+va\b"
     r"|"
     r"\bon\s+se\s+fait\s+(?:un|une)\s+"
-    r"(?:point|call|r[eé]union|cr[eé]neau)\b[^?\n]{0,80}\?",
+    r"(?:point|call|r[eé]union|cr[eé]neau|visio)\b[^?\n]{0,80}\?"
+    r"|"
+    r"\bpourrait-on\s+se\s+(?:voir|retrouver|caler|parler|r[eé]unir)\b"
+    r"|"
+    r"\bon\s+peut\s+se\s+(?:voir|retrouver|caler|parler|r[eé]unir)\b"
+    r"|"
+    r"\b(?:ça|ca)\s+(?:te|vous)\s+tenterait\b"
+    r"|"
+    r"\b(?:ce|ça|ca)\s+serait\s+bien\s+de\s+se\s+(?:voir|retrouver|r[eé]unir)\b"
+    r"|"
+    r"\bje\s+pr[eéè]f[eéè]rerais\s+qu['’]on\s+se\s+(?:voie|voit|parle|cale)\b"
+    r"|"
+    r"\bchaud\s+pour\s+(?:un|une)\s+"
+    r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
+    r"|"
+    r"\b(?:tu|vous)\s+(?:me|nous)\s+"
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
     re.I,
 )
 
@@ -649,7 +747,9 @@ FRENCH_OBLIGATION = re.compile(
     r"\b(?:tu|vous)\s+(?:dois|devez)\s+(?:me\s+|nous\s+)?"
     r"(?:rappeler|appeler|r[eé]server|planifier|pr[eé]venir)\b"
     r"|"
-    r"\bfaut\b.{0,60}\brappel",
+    r"\bfaut\b.{0,60}\brappel"
+    r"|"
+    r"\bfaut\b.{0,60}\bse\s+(?:voir|voie|parler|parle|caler|retrouver|r[eé]unir)\b",
     re.I,
 )
 
@@ -706,7 +806,10 @@ FRENCH_FORGET = re.compile(
 FRENCH_NEGATION = re.compile(
     r"\b(?:jamais|arr[eê]te(?:z)?|annule(?:r|z)?|supprime(?:r|z)?)\b"
     r"|\bne\b.+\b(?:pas|plus|jamais)\b"
-    r"|\bn['’]\w+\s+(?:pas|plus|jamais)\b",
+    r"|\bn['’]\w+\s+(?:pas|plus|jamais)\b"
+    # "Rappelle-moi pas" drops the "ne" and is still a cancellation.
+    r"|(?:^|[,:;]\s*)(?:rappelle(?:z)?(?:-(?:moi|nous))?|"
+    r"pr[eé]viens(?:-(?:moi|nous))?|envoie(?:z)?(?:-(?:moi|nous))?)\s+pas\b",
     re.I,
 )
 
@@ -907,7 +1010,10 @@ def has_scheduling_proposal(text):
     # This avoids matching "the book club" or "my book" where "book" is a noun
     proposal_pattern = re.compile(
         r"\b(?:we|i)\s+(?:schedule|book|meet|reschedule|move|cancel)\b"
+        r"|\b(?:we|i)\s+sync\b(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
         r"|\b(?:we|i)\s+do\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|"
+        r"thursday|friday|saturday|sunday|next|\d)\b"
+        r"|\bdoing\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|"
         r"thursday|friday|saturday|sunday|next|\d)\b"
         r"|\b(?:scheduling|booking|meeting|rescheduling|moving|canceling)\s+(?:a|an|the)\b"
         r"|\b(?:schedule|book|meet|reschedule|move|cancel)\s+(?:a|an|the|our|my)\b",
@@ -976,8 +1082,10 @@ def false_leading_command(doc):
     """A command word used as a noun modifier of an event headline.
 
     "Schedule conflicts every Monday" and "Email traffic spikes" are facts.
-    "Email Acme a recap" stays a command: its root is the recipient or object,
-    not an event predicate like conflict/spike/peak/appear.
+    "Send volumes grow" is the same headline when spaCy keeps "send" as root
+    and hangs the event verb off a bare noun object.
+    "Email Acme a recap" and "Send the report" stay commands.
+    "Remind me if sales drop" stays a request: the event verb is a real clause.
     """
     first = next((t for t in doc if t.is_alpha), None)
     if first is None:
@@ -985,9 +1093,27 @@ def false_leading_command(doc):
     if first.lemma_.lower() not in LEADING_ACTIONS and first.text.lower() not in LEADING_ACTIONS:
         return False
     root = root_token(doc)
-    if root is None or root == first:
+    if root is not None and root != first and root.lemma_.lower() in EVENT_HEADLINE_LEMMAS:
+        return True
+    if root is None or root != first:
         return False
-    return root.lemma_.lower() in EVENT_HEADLINE_LEMMAS
+    objects = [
+        child
+        for child in first.children
+        if child.dep_ in {"dobj", "obj"} and child.pos_ == "NOUN"
+        and not any(part.dep_ == "det" for part in child.children)
+    ]
+    if not objects:
+        return False
+    for token in doc:
+        if token.i <= first.i or token.lemma_.lower() not in EVENT_HEADLINE_LEMMAS:
+            continue
+        if token.pos_ != "VERB":
+            continue
+        if token.dep_ in {"advcl", "xcomp", "ccomp", "relcl"}:
+            continue
+        return True
+    return False
 
 
 def _separated_by_break(doc, earlier, later):
@@ -1167,6 +1293,14 @@ def looks_like_info_question(text):
     # about an existing schedule. "Why do we meet" still falls through.
     if RHETORICAL_PROPOSAL.search(text):
         return False
+    # "Remind me what time the meeting is" asks for a fact, not a new reminder.
+    # "When can you remind me tomorrow" names the ask and does not match.
+    if re.search(
+        r"\bremind\s+me\s+(?:what|when|where|who|why|how|which)\b",
+        text,
+        re.I,
+    ):
+        return True
     if PAST_SCHEDULE_QUESTION.search(text) or CONFIRMATION_QUESTION.search(text):
         return True
     if COPULAR_TIME_QUESTION.search(text) and not SCHEDULE_CONTENT.search(text):
@@ -1366,6 +1500,11 @@ def has_negation(text, doc):
         check_text_after_never_mind = POLITE_CHALLENGE.sub(
             " ", check_text_after_never_mind
         )
+    willing = WILLING_MIND.search(text)
+    if willing:
+        check_text_after_never_mind = WILLING_MIND.sub(
+            " ", check_text_after_never_mind
+        )
     if NEGATION_PATTERN.search(check_text_after_never_mind):
         return True
 
@@ -1403,6 +1542,8 @@ def has_negation(text, doc):
         ):
             continue
         if challenge and challenge.start() <= token.idx < challenge.end():
+            continue
+        if willing and willing.start() <= token.idx < willing.end():
             continue
         if not _dep_negation_cancels_schedule(token):
             continue
