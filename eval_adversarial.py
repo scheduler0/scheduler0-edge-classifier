@@ -44,7 +44,14 @@ Its implementation uses these imperfect heuristics:
   call", "we might meet", "mind reminding", "I could use a reminder",
   "it'd help if you reminded", "any possibility of meeting", "I'm open to
   meeting", "need you to remind", "you should probably remind", "have
-  someone remind") are requests. "can u" / "could u" count as "can you".
+  someone remind", "we should probably meet", "we might as well meet",
+  "we'd better meet", "I want us to meet", "we'd like to meet",
+  "I'd be happy to meet", "I'd be grateful if you reminded",
+  "I can do Thursday", "I propose we meet", "is it ok if we meet",
+  "touch base", "hop on a call", "tentatively book", "save Friday") are
+  requests. "Let's do Thursday" and "make it Friday" set a time; "let's do
+  the laundry", "make it a movie night", "push the furniture", and "lock
+  the door" do not. "can u" / "could u" count as "can you".
   "Create" is a request only when it creates a reminder, meeting, or other
   calendar object ("Create a scene every Monday" is a statement).
   A scheduling imperative after a short lead-in ("Okay, book the room",
@@ -61,9 +68,12 @@ Its implementation uses these imperfect heuristics:
   time ("remind me Friday, not Monday", "not tomorrow — remind me Friday")
   are not cancellations. Bare "not" attached to a noun or adverb is not one
   either. "I will not attend" still clarifies. "skip" / "avoid" / "refrain
-  from" plus a meeting, reminder, or emailing clarifies. Past and
-  confirmation questions ("did you schedule", "don't we meet", "wasn't the
-  meeting moved", "is tomorrow a holiday?") are rejected.
+  from" plus a meeting, reminder, or emailing clarifies, as do "scrap",
+  "postpone", "push back", "rain-check", and "take Friday off my calendar".
+  "Any meetings tomorrow?" is informational. "When you get a chance, book
+  the room" is a request; "when you get a chance, tell me why" is not.
+  Past and confirmation questions ("did you schedule", "don't we meet",
+  "wasn't the meeting moved", "is tomorrow a holiday?") are rejected.
 - Decision order: informational question or informational request -> reject;
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
@@ -75,8 +85,13 @@ Its implementation uses these imperfect heuristics:
   Soft proposals are requests: "pourquoi ne pas se voir", "et si on se voyait",
   "serait-il possible de se voir", "est-ce qu'on peut", "je te propose",
   "ça te dit", "ça te dirait", "ça te va", "on se fait un point ... ?",
-  "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
-  "Pourquoi ne pas" is not a cancellation and not an informational question.
+  "on se voit ... ?", "je souhaiterais", "reporte", "dis-moi de bloquer",
+  "pourquoi pas demain", "disons demain", "on dit demain ?", "on part sur
+  jeudi", "ce serait top de se voir", "je préférerais demain", "possible de
+  se voir", "on fait ça demain ?", "si on disait demain", "tu me bloques
+  ... ?", and "confirme-moi". "On pourrait se voir" is a request;
+  "on pourrait partir" is a statement. "Pourquoi ne pas" and "pourquoi pas"
+  plus a time are not informational questions.
   "Pourquoi on se voit ?" and "c'est quand" are informational. "a lieu" is a
   statement ("le standup a lieu tous les matins").
 """
