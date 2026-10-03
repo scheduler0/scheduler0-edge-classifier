@@ -40,11 +40,16 @@ Its implementation uses these imperfect heuristics:
   meet", "when should we meet", "why don't we meet", "why not meet", and
   "what say we meet". Hedged proposals ("I was wondering if we could meet",
   "any chance we could meet", "mind if we meet", "we need to meet",
-  "fancy a call", "up for a meeting", "I'd rather we meet", "I'd prefer a
+  "fancy a call", "up for a meeting", "down for a call", "game for a call",
+  "I'm keen to meet", "I vote we meet", "I'd like it if we met",
+  "wanna do Thursday", "we should catch up", "someone ought to remind",
+  "I need a nudge", "I request a meeting", "it'd be lovely to meet",
+  "how about Thursday for a call", "I'd rather we meet", "I'd prefer a
   call", "we might meet", "mind reminding", "I could use a reminder",
   "it'd help if you reminded", "any possibility of meeting", "I'm open to
   meeting", "need you to remind", "you should probably remind", "have
-  someone remind") are requests. "can u" / "could u" count as "can you".
+  someone remind") are requests. "We should catch up on email" is not.
+  "can u" / "could u" count as "can you".
   "Create" is a request only when it creates a reminder, meeting, or other
   calendar object ("Create a scene every Monday" is a statement).
   A scheduling imperative after a short lead-in ("Okay, book the room",
@@ -74,8 +79,14 @@ Its implementation uses these imperfect heuristics:
   trusted for French. Duckling is called with locale fr_FR for that text.
   Soft proposals are requests: "pourquoi ne pas se voir", "et si on se voyait",
   "serait-il possible de se voir", "est-ce qu'on peut", "je te propose",
-  "ça te dit", "ça te dirait", "ça te va", "on se fait un point ... ?",
-  "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
+  "ça te dit", "ça te dirait", "ça te va", "ça marche demain",
+  "ok pour demain", "c'est bon pour demain", "partant pour un point",
+  "on se fait un point ... ?", "on se fait un café ... ?",
+  "on se voit ... ?", "on bloque ... ?", "on se capte ... ?",
+  "on en parle ... ?", "on déjeune ... ?", "tu me réserves ... ?",
+  "je souhaiterais", "reporte", "pousse le point", and "dis-moi de bloquer".
+  "Je veux" / "j'aimerais" / "il faut" count only with a scheduling act
+  ("je veux qu'on se voie", not "je veux partir"). "On se voit pas" clarifies.
   "Pourquoi ne pas" is not a cancellation and not an informational question.
   "Pourquoi on se voit ?" and "c'est quand" are informational. "a lieu" is a
   statement ("le standup a lieu tous les matins").
