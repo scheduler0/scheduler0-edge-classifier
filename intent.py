@@ -66,7 +66,11 @@ GROUP_PROPOSAL = re.compile(
     r"(?:schedule|book|reschedule|move)\b"
     r"|"
     r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+meet\b"
-    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    # "We should catch up" is a meeting. "catch up on email" is not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"catch\s+up\b(?!\s+on\b)",
     re.I,
 )
 
@@ -84,6 +88,9 @@ NEED_TO_SCHEDULE = re.compile(
     r"|"
     r"\b(?:someone|somebody)\s+should\s+"
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
+    r"|"
+    r"\b(?:someone|somebody)\s+ought\s+to\s+"
+    r"(?:remind|email|schedule|book|ping|notify|send|call)\b"
     r"|"
     r"^\s*(?:someone|somebody)\s+"
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
@@ -128,7 +135,28 @@ HEDGED_PROPOSAL = re.compile(
     r"|"
     r"^\s*fancy\s+(?:a|an)\s+(?:call|meeting|sync|chat)\b"
     r"|"
-    r"^\s*up\s+for\s+(?:a|an)\s+(?:call|meeting|sync|chat)\b"
+    r"\bup\s+for\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    r"|"
+    r"\bdown\s+for\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    r"|"
+    r"\bgame\s+for\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    r"|"
+    r"\b(?:i(?:'m|\s+am)\s+)?keen\s+to\s+meet\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\bi\s+vote\s+(?:that\s+)?we\s+meet\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+like\s+it\s+if\s+(?:we|you|someone|somebody)\s+"
+    r"(?:met|meet|reminded|remind|scheduled|booked)\b"
+    r"|"
+    r"\bwanna\s+do\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
+    r"|"
+    r"\bit(?:['’]d|\s+would)\s+be\s+lovely\s+to\s+"
+    r"(?:meet|schedule|book|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
     r"|"
     r"\bi(?:'m|\s+am)\s+down\s+to\s+(?:meet|schedule|book)\b"
     r"(?!\s+(?:the|a|an)\b)"
@@ -247,7 +275,10 @@ FIRST_PERSON_SCHEDULE = re.compile(
     r"(?:schedule|book|remind|set|create|send|email|notify|ping|meet|move|reschedule)\b"
     r"|"
     r"\bi\s+(?:want|need)\s+(?:a|an|the)\s+"
-    r"(?:reminder|meeting|call|sync|event|appointment)\b"
+    r"(?:reminder|meeting|call|sync|event|appointment|nudge)\b"
+    r"|"
+    r"\bi\s+request\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync|appointment)\b"
     r"|"
     r"\bi(?:['’]d|\s+would)\s+appreciate\s+(?:a|an|the)\s+"
     r"(?:reminder|meeting|call|sync|appointment)\b"
@@ -580,9 +611,17 @@ FRENCH_POLITE = re.compile(
     r"\b(?:s['’]il\s+(?:te|vous)\s+pla[iî]t|svp|stp|merci\s+d['’e]|veuillez|"
     r"peux[-\s]tu|pouvez[-\s]vous|pourrais[-\s]tu|pourriez[-\s]vous|"
     r"tu\s+peux|vous\s+pouvez|tu\s+pourrais|vous\s+pourriez|veux[-\s]tu|"
-    r"j['’]ai\s+besoin|je\s+voudrais|j['’]aimerais|je\s+veux(?!\s+dire\b)|"
-    r"je\s+souhaite(?:rais)?|il\s+faut|nous\s+devrions|on\s+devrait|on\s+pourrait|"
-    r"nous\s+pourrions|aide[-\s]moi|aidez[-\s]moi)\b",
+    r"nous\s+devrions|on\s+devrait|on\s+pourrait|"
+    r"nous\s+pourrions|aide[-\s]moi|aidez[-\s]moi)\b"
+    r"|"
+    # "Je veux qu'on se voie" / "il faut m'envoyer" ask to schedule.
+    # "Je veux partir" and "il faut partir" do not.
+    r"\b(?:j['’]ai\s+besoin|je\s+voudrais|j['’]aimerais|"
+    r"je\s+veux(?!\s+dire\b)|je\s+souhaite(?:rais)?|il\s+faut)\b.{0,80}?"
+    r"\b(?:se\s+(?:voir|voie|voient|retrouver|r[eé]unir|caler|parler)|"
+    r"planifi\w*|programm\w*|r[eé]serv\w*|bloqu\w*|cale(?:r|z)?|"
+    r"rappel\w*|envoi\w*|pr[eé]vien\w*|notifi\w*|"
+    r"rendez-vous|cr[eé]neaux?)\b",
     re.I,
 )
 
@@ -595,7 +634,10 @@ FRENCH_IMPERATIVE = re.compile(
     r"programme(?:z)?(?=\s+(?:la|le|les|un|une|l['’]|moi|nous|ça|ca|ce|cet|cette)\b)|"
     r"bloque(?:z)?(?:-moi)?|ajoute(?:z)?|"
     r"fixe(?:z)?|r[eé]serve(?:z)?|notifie(?:z)?|d[eé]place(?:z)?|"
-    r"cale(?:z)?|reporte(?:z)?|d[eé]cale(?:z)?|aide(?:z)?-moi)\b",
+    r"cale(?:z)?|reporte(?:z)?|d[eé]cale(?:z)?|"
+    r"(?:re)?pousse(?:z)?(?=\s+(?:le|la|les|un|une)\s+"
+    r"(?:point|r[eé]union|reunion|rendez-vous|rappel|call|cr[eé]neau|visio)\b)|"
+    r"aide(?:z)?-moi)\b",
     re.I,
 )
 
@@ -639,7 +681,37 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\b(?:ça|ca)\s+(?:te|vous)\s+va\b"
     r"|"
     r"\bon\s+se\s+fait\s+(?:un|une)\s+"
-    r"(?:point|call|r[eé]union|cr[eé]neau)\b[^?\n]{0,80}\?",
+    r"(?:point|call|r[eé]union|cr[eé]neau|caf[eé])\b[^?\n]{0,80}\?"
+    r"|"
+    # Slot acceptances. A bare "ça marche bien" is not one.
+    r"\b(?:ça|ca)\s+marche\s+(?:pour\s+)?"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|ce\s+soir|\d)\b"
+    r"|"
+    r"\b(?:ok|okay)\s+pour\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|ce\s+soir|\d)\b"
+    r"|"
+    r"\bc['’]est\s+bon\s+pour\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|ce\s+soir|\d)\b"
+    r"|"
+    r"\bpartant\s+pour\s+(?:un\s+point|une\s+(?:r[eé]union|visio)|"
+    r"un\s+(?:call|caf[eé])|demain|lundi|mardi|mercredi|jeudi|vendredi)\b"
+    r"|"
+    r"\bon\s+a\s+besoin\s+de\s+se\s+(?:voir|parler|retrouver|caler|r[eé]unir)\b"
+    r"|"
+    r"\bbesoin\s+d['’](?:un|une)\s+(?:rappel|rendez-vous|r[eé]union|cr[eé]neau)\b"
+    r"|"
+    r"\btu\s+me\s+r[eé]serves\b[^?\n]{0,40}\?"
+    r"|"
+    r"\bon\s+bloque\b[^?\n]{0,40}\?"
+    r"|"
+    r"\bon\s+se\s+capte\b[^?\n]{0,40}\?"
+    r"|"
+    r"\bon\s+en\s+parle\b[^?\n]{0,40}\?"
+    r"|"
+    r"\bon\s+d[eé]jeune\b[^?\n]{0,40}\?",
     re.I,
 )
 
@@ -706,7 +778,9 @@ FRENCH_FORGET = re.compile(
 FRENCH_NEGATION = re.compile(
     r"\b(?:jamais|arr[eê]te(?:z)?|annule(?:r|z)?|supprime(?:r|z)?)\b"
     r"|\bne\b.+\b(?:pas|plus|jamais)\b"
-    r"|\bn['’]\w+\s+(?:pas|plus|jamais)\b",
+    r"|\bn['’]\w+\s+(?:pas|plus|jamais)\b"
+    # "On se voit pas demain" drops the "ne" and still cancels.
+    r"|\bon\s+se\s+(?:voit|retrouve|parle|cale)\s+pas\b",
     re.I,
 )
 
@@ -892,6 +966,17 @@ def has_scheduling_proposal(text):
         return True
     if re.search(
         r"^\s*how\s+about\s+(?:a|an)\s+(?:call|meeting|sync|chat|appointment)\b",
+        text,
+        re.I,
+    ):
+        return True
+    # "How about Thursday at 3 for a call?" names the meeting.
+    # "How about tomorrow at 3?" does not.
+    if re.search(
+        r"^\s*how\s+about\s+"
+        r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+        r"saturday|sunday|next|\d)\b.{0,40}"
+        r"\b(?:for|as)\s+(?:a|an|the)\s+(?:call|meeting|sync|chat|appointment)\b",
         text,
         re.I,
     ):
