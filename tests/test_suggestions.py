@@ -284,6 +284,88 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_unicode_spaces_and_unknown_english_regions(self):
+        # These spaces are Unicode whitespace, so strip() drops them and a
+        # known region survives. The same mark inside the tag is not a
+        # separator, and neither are regions Duckling does not ship.
+        spaces = (
+            "\u2000",
+            "\u2001",
+            "\u2002",
+            "\u2003",
+            "\u2004",
+            "\u2005",
+            "\u2006",
+            "\u2007",
+            "\u2008",
+            "\u2009",
+            "\u200a",
+            "\u205f",
+        )
+        regions = ("US", "GB", "AU", "NZ", "IE", "IN", "JM", "PH", "ZA", "TT", "BZ", "CA")
+        for space, region in zip(spaces, regions):
+            raw = f"{space}en_{region}{space}"
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(f"en_{region}", resolve_duckling_locale(raw))
+            embedded = f"en{space}_{region}"
+            with self.subTest(locale=embedded):
+                self.assertTrue(is_english_locale(embedded))
+                self.assertEqual("en_GB", resolve_duckling_locale(embedded))
+
+        for raw in (
+            "en_HK",
+            "en_SG",
+            "en-MY",
+            "en_NG",
+            "en_KE",
+            "en_MT",
+            "en_419",
+            "en_150",
+            "en_US@euro",
+            "en_GB.ISO8859-1",
+            "en-Dsrt",
+            "en_US\u2060",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in ("\u2009fr\u2009", "es\u200a", "\u2007de", "i-en", "i-en_US"):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_padded_regions_and_rejects_spaced_french(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="\u2003en-ph\u2003",
+                )
+            )
+        self.assertEqual("en_PH", parsed.call_args.kwargs["locale"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en_HK",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+
+        locale = "\u2009fr\u2009"
+        with patch("suggestions.duckling_parse") as parsed:
+            with patch("suggestions.nlp") as nlp:
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    analyze(_request([_msg("I'll send you the proposal tomorrow.")], locale=locale))
+        self.assertEqual(locale, ctx.exception.locale)
+        parsed.assert_not_called()
+        nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
