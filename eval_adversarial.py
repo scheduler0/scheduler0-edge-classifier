@@ -38,7 +38,14 @@ Its implementation uses these imperfect heuristics:
 - Text starting with what/why/how/when/where/who/which is rejected as an
   informational question, except scheduling proposals such as "how about we
   meet", "when should we meet", "why don't we meet", "why not meet", and
-  "what say we meet". Hedged proposals ("I was wondering if we could meet",
+  "what say we meet". "How's Thursday for a call", "I'm free tomorrow for a
+  meeting", "works for a call", "good for a meeting", "I'm good for Thursday", "do you have time
+  for a call", "a reminder tomorrow would be great", "happy to meet",
+  "lemme book", "pencil in Thursday", and "sync tomorrow?" are slot offers.
+  "How's the weather", "I'm free tomorrow" with no meeting, "works for me",
+  "happy to leave", and "gimme the report" are not. "Does Thursday work?"
+  asks about a slot and is not an imperative. "Can we do Thursday" is a
+  request; "can we do the laundry" is not. Hedged proposals ("I was wondering if we could meet",
   "any chance we could meet", "mind if we meet", "we need to meet",
   "fancy a call", "up for a meeting", "I'd rather we meet", "I'd prefer a
   call", "we might meet", "mind reminding", "I could use a reminder",
@@ -87,6 +94,8 @@ Its implementation uses these imperfect heuristics:
   "pourrait-on se voir", "on peut se voir", "si on se voyait",
   "ce serait bien de se voir", "je préférerais qu'on se voie",
   "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
+  "je suis dispo pour un point", "libre pour un point",
+  "décale/bouge/avance la réunion",
   "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
   "Pourquoi ne pas" is not a cancellation and not an informational question.
   "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
