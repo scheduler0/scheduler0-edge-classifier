@@ -368,6 +368,64 @@ POLITE_INDIRECT = re.compile(
     re.I,
 )
 
+# "How's Thursday for a call?" and "I'm free tomorrow for a meeting" offer a
+# slot. "How's the weather tomorrow?" and "I'm free tomorrow" do not.
+# "Does 3 work tomorrow?" asks whether a slot fits; it is not an imperative.
+SLOT_FIT = re.compile(
+    r"\bhow(?:['’]s|\s+is|\s+does)\b"
+    r"(?!\s+the\s+(?:weather|agenda|plan|reason|status)\b)"
+    r".{0,50}\b(?:"
+    r"for\s+(?:a|an|the)\s+(?:call|meeting|sync|chat|appointment|review)"
+    r"|look\b.{0,30}\b(?:call|meeting|sync|chat|appointment|review)"
+    r")\b"
+    r"|"
+    r"\b(?:are\s+you\s+|you\s+|i(?:['’]m|\s+am)\s+)?(?:free|available)\b"
+    r".{0,50}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    r"\bworks?\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    # "Is 3pm tomorrow good for a meeting?" offers a slot. "Good for a picnic" does not.
+    r"\bgood\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+good\s+for\s+(?:(?:a|an|the)\s+)?"
+    r"(?:call|meeting|sync|chat|appointment|"
+    r"tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|\d)\b"
+    r"|"
+    r"\b(?:do\s+you\s+have|got)\s+time\b.{0,50}\b(?:call|meeting|sync|chat|appointment)\b"
+    r"|"
+    r"\b(?:do\s+you\s+have|got)\s+a\s+(?:minute|sec|second|moment)\b.{0,50}\b"
+    r"(?:call|meeting|sync|chat|appointment)\b"
+    r"|"
+    r"\b(?:a|an)\s+(?:reminder|meeting|call|sync|appointment)\b.{0,40}\b"
+    r"would\s+be\s+(?:great|good|nice|helpful)\b"
+    r"|"
+    r"\b(?:i(?:['’]m|\s+am)\s+)?(?:happy|glad)\s+to\s+(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:lemme|lemmy|gimme|gimmie)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:book|schedule|remind(?:er)?|meeting|call|sync)\b"
+    r"|"
+    r"\bpencil\s+(?:me\s+)?in\s+(?:for\s+)?(?:(?:a|an|the)\s+)?"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|morning|afternoon|evening|next|\d+|"
+    r"review|meeting|call|sync|slot|appointment|chat)\b"
+    r"|"
+    # "Sync tomorrow at 10?" proposes a meeting. "Sync the files tomorrow?" does not.
+    r"^\s*(?:sync|standup|huddle)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it|files?|data|repos?)\b)"
+    r"[^?\n]{0,50}\?",
+    re.I,
+)
+
+DOES_SLOT_WORK = re.compile(
+    r"^\s*does\b.{0,80}\bwork\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -676,8 +734,8 @@ FRENCH_IMPERATIVE = re.compile(
     r"planifie(?:z)?|"
     r"programme(?:z)?(?=\s+(?:la|le|les|un|une|l['’]|moi|nous|ça|ca|ce|cet|cette)\b)|"
     r"bloque(?:z)?(?:-moi)?|ajoute(?:z)?|"
-    r"fixe(?:z)?|r[eé]serve(?:z)?|notifie(?:z)?|d[eé]place(?:z)?|"
-    r"cale(?:z)?|reporte(?:z)?|d[eé]cale(?:z)?|aide(?:z)?-moi)\b",
+    r"fixe(?:z)?|r[eé]serve(?:z)?|notifie(?:z)?|"
+    r"aide(?:z)?-moi)\b",
     re.I,
 )
 
@@ -738,6 +796,29 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
     r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    re.I,
+)
+
+# "Décale la réunion" reschedules. "Décale la chaise" and "bouge la table" do not.
+_FRENCH_MOVE_VERB = (
+    r"d[eé]cale(?:z)?|d[eé]place(?:z)?|reporte(?:z)?|bouge(?:z)?|avance(?:z)?|cale(?:z)?"
+)
+_FRENCH_MOVE_OBJECT = (
+    r"r[eé]unions?|points?|calls?|visios?|cr[eé]neaux|cr[eé]neau|"
+    r"rendez-vous|rappels?|syncs?|standups?"
+)
+FRENCH_RESCHEDULE = re.compile(
+    rf"\b(?:{_FRENCH_MOVE_VERB})(?:-(?:la|le|les|moi))?\b"
+    rf".{{0,40}}\b(?:{_FRENCH_MOVE_OBJECT})\b"
+    rf"|\b(?:{_FRENCH_MOVE_VERB})-(?:la|le|les)\b",
+    re.I,
+)
+
+# "Je suis dispo demain pour un point" offers a slot.
+# "Je suis dispo demain" and "je suis libre demain matin" do not.
+FRENCH_AVAILABILITY = re.compile(
+    r"\b(?:dispo|disponible|libre)\b.{0,60}\b"
+    r"(?:point|r[eé]union|call|visio|cr[eé]neau|rappel)\b",
     re.I,
 )
 
@@ -1036,6 +1117,7 @@ def has_request_phrase(text):
         DEADLINE_REQUEST,
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
+        SLOT_FIT,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1190,10 +1272,58 @@ def _non_schedule_create(text):
     )
 
 
+_SLOT_HEAD = re.compile(
+    r"^(?:it|this|that|"
+    r"tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|morning|afternoon|evening|night|next|"
+    r"\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?|"
+    r"meetings?|syncs?|calls?|standups?|huddles?|reminders?|reviews?|"
+    r"appointments?|slots?)\b",
+    re.I,
+)
+_TRAILING_TIME = re.compile(
+    r"(?:[\s,]+(?:at|on|by|every|each|next|this|tomorrow|today|tonight|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"morning|afternoon|evening|night|"
+    r"\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?))+\s*[?.!]*$",
+    re.I,
+)
+
+
+def _object_is_schedule(rest):
+    """True when the object of "do" is a slot or a meeting, not a chore."""
+    core = rest.strip()
+    previous = None
+    while core and core != previous:
+        previous = core
+        core = _TRAILING_TIME.sub("", core).strip()
+    core = core.strip(" ?.!")
+    core = re.sub(r"^(?:the|a|an|our|my|your)\s+", "", core, flags=re.I)
+    if re.match(r"^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)'s\b", core, re.I):
+        return False
+    return bool(_SLOT_HEAD.match(core))
+
+
+def _group_do_non_schedule(text):
+    """'Can we do Thursday' sets a slot. 'Can we do the laundry' does not."""
+    match = re.search(
+        r"\b(?:can|could|shall|should)\s+we\s+do\s+(.+)",
+        text,
+        re.I,
+    )
+    if match is None:
+        return False
+    return not _object_is_schedule(match.group(1))
+
+
 def looks_like_request(doc, text):
     root = root_token(doc)
 
     if root is None or false_leading_command(doc) or _non_schedule_create(text):
+        return False
+    # "Does Thursday work for a call?" asks about a slot. The "work for a
+    # call" phrase is not itself a request.
+    if _group_do_non_schedule(text) or DOES_SLOT_WORK.search(text):
         return False
 
     # "Can you send me a digest every Friday?"
@@ -1215,7 +1345,7 @@ def looks_like_request(doc, text):
     # "Does Thursday work for a call?" is a question whose root is "do",
     # not an imperative. Emphatic "Do remind me" has root "remind".
     if root.pos_ == "VERB" and not has_subject(doc):
-        if not (root.lemma_.lower() == "do" and "?" in text):
+        if not (root.lemma_.lower() == "do" and "?" in text) and not DOES_SLOT_WORK.search(text):
             return True
 
     # "Book conference room B", "Snooze the reminder" — spaCy drops the verb.
@@ -1240,6 +1370,10 @@ def looks_like_declarative_statement(doc, text):
         return False
 
     if false_leading_command(doc) or _non_schedule_create(text):
+        return True
+
+    # "Can we do the laundry tomorrow?" states no scheduling act.
+    if _group_do_non_schedule(text):
         return True
 
     # Do not treat request-shaped questions as declarative just because
@@ -1291,7 +1425,7 @@ COPULAR_TIME_QUESTION = re.compile(
 def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
-    if RHETORICAL_PROPOSAL.search(text):
+    if RHETORICAL_PROPOSAL.search(text) or SLOT_FIT.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
@@ -1428,6 +1562,8 @@ def looks_like_french_request(text, doc):
         or FRENCH_IMPERATIVE.search(text)
         or FRENCH_PROPOSAL.search(text)
         or FRENCH_SOFT_PROPOSAL.search(text)
+        or FRENCH_RESCHEDULE.search(text)
+        or FRENCH_AVAILABILITY.search(text)
         or FRENCH_CANCEL_REQUEST.search(text)
         or FRENCH_REMEMBER.search(text)
         or FRENCH_NEGATED_IMPERATIVE.search(text)
