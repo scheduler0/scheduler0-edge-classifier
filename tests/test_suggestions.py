@@ -273,6 +273,93 @@ class LocaleResolutionTests(unittest.TestCase):
         parsed.assert_not_called()
         nlp.assert_not_called()
 
+    def test_c1_whitespace_and_format_marks_around_locales(self):
+        # C1 and information separators count as whitespace, so they pad a
+        # region the same way a space does. A mark that str.strip does not
+        # remove hides the region, and a leading mark means the tag is not English.
+        kept = {
+            "\u0085en_BZ\u0085": "en_BZ",
+            "\x1cen_TT\x1c": "en_TT",
+            "\x1den_JM\x1d": "en_JM",
+            "\x1een_PH\x1e": "en_PH",
+            "\x1fen_ZA\x1f": "en_ZA",
+            "en_GB_US": "en_GB",
+            "en_IN_CA": "en_IN",
+            "en__GB": "en_GB",
+            "EN-bz": "en_BZ",
+            "en-jm": "en_JM",
+            "  eN_iE  ": "en_IE",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en\u0085_US",
+            "en\x1c_GB",
+            "en\u1680_IE",
+            "en\u00ad_US",
+            "en_US\u200c",
+            "en_US\u200d",
+            "en_IE\u061c",
+            "en_NZ\u180e",
+            "en_PH\u2066",
+            "en_ZA\u034f",
+            "en_JM\ufe0f",
+            "en_AU\u2069",
+            "en_CA\u202a",
+            "en_TT\u202c",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u180een_US",
+            "\u200ben_US",
+            "\u2060en_GB",
+            "\u061cen_US",
+            "\u200een",
+            "\u00aden_US",
+            "\u2066en_US",
+            "\u0085fr",
+            "de\u180e",
+            "\u200bja",
+            "zh\u2060",
+            "pt\u061c",
+            "\u200b",
+            "es\u0085",
+            "\x1cfr",
+            "ar\u200d",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_keeps_a_region_padded_with_next_line(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="\u0085en-bz\u0085",
+                )
+            )
+        self.assertEqual("en_BZ", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
+    def test_analyze_rejects_a_zwsp_prefixed_language_before_parsing(self):
+        locale = "\u200bja"
+        with patch("suggestions.duckling_parse") as parsed:
+            with patch("suggestions.nlp") as nlp:
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    analyze(_request([_msg("I'll send you the proposal tomorrow.")], locale=locale))
+        self.assertEqual(locale, ctx.exception.locale)
+        parsed.assert_not_called()
+        nlp.assert_not_called()
+
     def test_analyze_maps_an_unknown_english_region_to_en_gb(self):
         with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
             result = analyze(
