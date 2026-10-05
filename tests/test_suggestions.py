@@ -284,6 +284,87 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_hyphen_variants_and_invisible_marks(self):
+        # Unicode hyphens, interior separators, and format marks are not
+        # region separators. strip() does not remove them, so a real region
+        # written with one of them falls back to en_GB.
+        fallbacks = (
+            "en\u2010US",
+            "en\u2011US",
+            "en\u2212US",
+            "en\u00b7US",
+            "en'US",
+            "en_US\x7f",
+            "en\x7f_US",
+            "en_US\\",
+            "en_US#",
+            "en_US)",
+            "en_US\ufe0e",
+            "en_US\ufe00",
+            "en\u0323_US",
+            "en\uff0dUS",
+            "en_US\ue000",
+            "en\u2060_US",
+            "en_US\u202e",
+            "en_\u202eUS",
+            "en_US\u1361",
+            "en\u061c_US",
+            "en_US\u180b",
+            "en\u180b_US",
+            "en_IE\x7f",
+            "en\u2028_US",
+            "en\u2029_GB",
+            "  en\u2010gb  ",
+            "EN\u2011us",
+        )
+        for raw in fallbacks:
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        rejected = (
+            "e\u0301n_US",
+            "\u03bfn",
+            "\u03bfn_US",
+            "e\u043d",
+            "e\u043d_US",
+            "(en_US)",
+            "\u202een_US",
+            "\u1361en_US",
+        )
+        for raw in rejected:
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_maps_a_unicode_hyphen_locale_to_en_gb(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en\u2010US",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
+    def test_analyze_rejects_a_combining_acute_before_parsing(self):
+        locale = "e\u0301n_US"
+        with patch("suggestions.duckling_parse") as parsed:
+            with patch("suggestions.nlp") as nlp:
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    analyze(
+                        _request(
+                            [_msg("I'll send you the proposal tomorrow.")],
+                            locale=locale,
+                        )
+                    )
+        self.assertEqual(locale, ctx.exception.locale)
+        parsed.assert_not_called()
+        nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
