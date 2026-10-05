@@ -92,6 +92,19 @@ Its implementation uses these imperfect heuristics:
   "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
   without "?" are not requests. "Pourquoi on se voit ?" and "c'est quand" are
   informational. "a lieu" is a statement ("le standup a lieu tous les matins").
+  Colloquial offers are requests: "do you feel like meeting", "are you down to
+  meet", "I'm keen on a call", "I'm game to meet", "I'm in for a call",
+  "fancy meeting", "how about a huddle", "I'm thinking we meet", "we've got to
+  meet", "we oughta meet", "I gotta be reminded", "the team should sync",
+  "anyone free to meet", "who wants to meet", and "would it be possible for us
+  to meet". "Feel like leaving", "care to leave", "want me to leave",
+  "game to meet the client", "got to meet the deadline", "sync the files",
+  and "how about a pizza" are not. "Tu peux" / "vous pouvez" request only with
+  a scheduling verb ("tu peux décaler", not "tu peux partir"). "Ça te branche
+  un point", "tu me cales ... ?", "ok pour un point", "ce serait cool de se
+  voir", "dis-moi de décaler", "balance-moi un rappel", "on garde le créneau",
+  "pas demain, on se voit jeudi", and "dispo pour qu'on se voie" are requests.
+  "On zappe le point", "on saute la réunion", and "on se capte pas" clarify.
 """
 
 
