@@ -241,6 +241,66 @@ RHETORICAL_PROPOSAL = re.compile(
     re.I,
 )
 
+# Colloquial offers that never use "can you" / "let's" and are not the
+# "down for a call" / "keen to meet" forms. The object of meet/sync has to
+# stay empty: "meet the client" and "sync the files" are not meetings.
+_MEET_SYNC = (
+    r"(?:meet|sync)\b(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+)
+_SLOT_NOUN = r"(?:call|meeting|sync|huddle|chat)"
+COLLOQUIAL_SLOT = re.compile(
+    r"\bfeel\s+like\s+(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|"
+    rf"(?:a|an|the)\s+{_SLOT_NOUN}\b)"
+    r"|"
+    rf"\bcare\s+to\s+(?:{_MEET_SYNC}|remind\b|book\b|schedule\b)"
+    r"|"
+    rf"\bcare\s+for\s+(?:a|an|the)\s+{_SLOT_NOUN}\b"
+    r"|"
+    rf"\b(?:are\s+you\s+|you\s+)?down\s+to\s+{_MEET_SYNC}"
+    r"|"
+    r"\bkeen\s+on\s+(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|"
+    rf"(?:a|an|the)\s+{_SLOT_NOUN}\b)"
+    r"|"
+    rf"\b(?:i(?:['’]m|\s+am)\s+)?game\s+to\s+{_MEET_SYNC}"
+    r"|"
+    rf"\bi(?:['’]m|\s+am)\s+in\s+for\s+(?:a|an|the)\s+{_SLOT_NOUN}\b"
+    r"|"
+    r"\bfancy\s+meeting\b(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    rf"\bhow\s+about\s+(?:a|an)\s+huddle\b"
+    r"|"
+    rf"\bi(?:['’]m|\s+am)\s+thinking\s+we\s+{_MEET_SYNC}"
+    r"|"
+    rf"\bwe(?:['’]ve|\s+have)\s+got\s+to\s+{_MEET_SYNC}"
+    r"|"
+    rf"\bwe\s+oughta\s+{_MEET_SYNC}"
+    r"|"
+    r"\bi\s+gotta\s+be\s+reminded\b"
+    r"|"
+    r"\b(?:would\s+it\s+be\s+possible|is\s+it\s+possible)\s+for\s+"
+    rf"(?:us|me|the\s+team)\s+to\s+{_MEET_SYNC}"
+    r"|"
+    r"\b(?:the\s+)?(?:whole\s+)?(?:team|group|crew)\s+should\s+sync\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:can|could|shall|should|will|would)\s+(?:the\s+)?(?:team|group|crew)\s+"
+    r"sync\b(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    rf"\b(?:anyone|anybody|someone|somebody)\s+free\s+to\s+{_MEET_SYNC}"
+    r"|"
+    rf"\b(?:anyone|anybody)\s+up\s+for\s+(?:a|an)\s+{_SLOT_NOUN}\b"
+    r"|"
+    rf"\bwho\s+wants\s+to\s+{_MEET_SYNC}"
+    r"|"
+    rf"\bdoes\s+(?:anyone|anybody|someone|somebody)\s+want\s+to\s+{_MEET_SYNC}"
+    r"|"
+    r"\bwant\s+(?:me|us|you)\s+to\s+"
+    r"(?:book|schedule|remind|email|ping|notify|send|reschedule)\b"
+    r"|"
+    rf"\bwant\s+(?:me|us|you)\s+to\s+{_MEET_SYNC}",
+    re.I,
+)
+
 # Weekday or day-part used in "remind me Friday, not Monday".
 CONTRASTIVE_TIME_WORDS = {
     "monday",
@@ -645,9 +705,22 @@ FRENCH_INFO_QUESTION = re.compile(
 
 FRENCH_YESNO = re.compile(r"^\s*est-ce que\b", re.I)
 
+# "Est-ce que tu peux réserver" / "est-ce qu'on peut se voir" ask to schedule.
+# "Est-ce que tu peux partir" does not: the modal needs a scheduling verb.
+_FRENCH_ABILITY_ACT = (
+    r"(?:rappeler|rappelles|r[eé]server|planifier|pr[eé]venir|"
+    r"bloquer|caler|d[eé]caler|d[eé]placer|reporter|avancer|"
+    r"envoyer|se\s+voir|se\s+voie|se\s+caler|m['’]envoyer)"
+)
 FRENCH_YESNO_REQUEST = re.compile(
     r"^\s*est-ce qu?[''e](?:\s+)?(?:tu|vous|on)\s+"
-    r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b",
+    r"(?:peux|pouvez|peut|pourrais|pourriez|pourrait)\b"
+    rf".{{0,60}}?\b{_FRENCH_ABILITY_ACT}\b",
+    re.I,
+)
+FRENCH_ABILITY = re.compile(
+    r"\b(?:tu\s+peux|vous\s+pouvez|tu\s+pourrais|vous\s+pourriez)\b"
+    rf".{{0,60}}?\b{_FRENCH_ABILITY_ACT}\b",
     re.I,
 )
 
@@ -661,7 +734,7 @@ FRENCH_EXPLAIN = re.compile(
 FRENCH_POLITE = re.compile(
     r"\b(?:s['’]il\s+(?:te|vous)\s+pla[iî]t|svp|stp|merci\s+d['’e]|veuillez|"
     r"peux[-\s]tu|pouvez[-\s]vous|pourrais[-\s]tu|pourriez[-\s]vous|"
-    r"tu\s+peux|vous\s+pouvez|tu\s+pourrais|vous\s+pourriez|veux[-\s]tu|"
+    r"veux[-\s]tu|"
     r"j['’]ai\s+besoin|je\s+voudrais|j['’]aimerais|je\s+veux(?!\s+dire\b)|"
     r"je\s+souhaite(?:rais)?|il\s+faut|nous\s+devrions|on\s+devrait|on\s+pourrait|"
     r"nous\s+pourrions|aide[-\s]moi|aidez[-\s]moi)\b",
@@ -738,6 +811,45 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
     r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    re.I,
+)
+
+# Soft offers the polite and "ça te dit" lists miss. A question mark is
+# required when the same words are also a bare statement ("tu me cales").
+_FR_SLOT_NOUN = r"(?:point|call|r[eé]union|visio|cr[eé]neau|rappel)"
+FRENCH_COLLOQUIAL = re.compile(
+    rf"\b(?:ça|ca)\s+(?:te|vous)\s+branche\b.{{0,40}}\b{_FR_SLOT_NOUN}\b"
+    r"|"
+    r"\b(?:tu|vous)\s+(?:me|nous)\s+cales\b[^?\n]{0,40}\?"
+    r"|"
+    rf"\b(?:ok|okay)\s+pour\s+(?:un|une)\s+{_FR_SLOT_NOUN}\b"
+    r"|"
+    rf"\bje\s+suis\s+ok\s+pour\s+(?:un|une)\s+{_FR_SLOT_NOUN}\b"
+    r"|"
+    r"\b(?:ce|ça|ca)\s+serait\s+(?:cool|super|sympa|chouette)\s+de\s+se\s+"
+    r"(?:voir|retrouver|r[eé]unir)\b"
+    r"|"
+    r"\bdis-moi\s+de\s+(?:d[eé]caler|avancer|reporter|glisser)\b"
+    r"|"
+    r"(?:^|[,:;]\s*)balance(?:z)?-moi\s+(?:un|une)\s+"
+    r"(?:rappel|cr[eé]neau|point)\b"
+    r"|"
+    r"\bon\s+(?:garde|maintient)\s+(?:le|la|les|un|une)\s+"
+    rf"{_FR_SLOT_NOUN}\b"
+    r"|"
+    r"\bpas\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche)\b.{0,40}\bon\s+se\s+(?:voit|retrouve|cale)\b"
+    r"|"
+    r"\bdispo\b.{0,40}\bse\s+(?:voie|voir|voit)\b",
+    re.I,
+)
+
+# "On zappe le point" / "on se capte pas" cancel. They are not new invites.
+FRENCH_SOFT_CANCEL = re.compile(
+    r"\bon\s+(?:zappe|saute)\s+(?:le|la|les|un|une)\s+"
+    rf"{_FR_SLOT_NOUN}\b"
+    r"|"
+    r"\bon\s+se\s+capte\s+pas\b",
     re.I,
 )
 
@@ -848,7 +960,9 @@ FRENCH_STATEMENT = re.compile(
     r"|^\s*(?:le|la|les|un|une|ce|cet|cette)\s+(?:\S+\s+){1,6}"
     r"(?:est|sont|tourne|part|d[eé]marre|demarre|s['’]ex[eé]cute|s['’]execute|"
     r"ouvre|ouvrent|ferme|ferment|a\s+lieu|aura\s+lieu|ont\s+lieu)\b"
-    r"|^\s*note(?:z)?\s+que\b",
+    r"|^\s*note(?:z)?\s+que\b"
+    # "Tu peux partir" is a statement once it failed the scheduling-verb check.
+    r"|^\s*(?:tu\s+(?:peux|pourrais)|vous\s+(?:pouvez|pourriez))\b",
     re.I,
 )
 
@@ -1033,11 +1147,14 @@ def has_request_phrase(text):
         HEDGED_PROPOSAL,
         RHETORICAL_PROPOSAL,
         COLLECTIVE_REQUEST,
+        COLLOQUIAL_SLOT,
         DEADLINE_REQUEST,
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
+        FRENCH_ABILITY,
+        FRENCH_COLLOQUIAL,
         FRENCH_IMPERATIVE,
         FRENCH_PROPOSAL,
         FRENCH_SOFT_PROPOSAL,
@@ -1173,6 +1290,26 @@ def preamble_imperative(doc):
     return False
 
 
+_WILLINGNESS_FRAME = re.compile(
+    r"^\s*(?:do\s+you\s+|would\s+you\s+|i\s+)?"
+    r"(?:feel\s+like|care\s+(?:to|for)|want\s+(?:me|us|you)\s+to)\b"
+    r"(.*)$",
+    re.I | re.S,
+)
+
+
+def _willingness_without_schedule(text):
+    """'Feel like leaving' is not a scheduling ask. 'Feel like meeting' is.
+
+    The frame has to open the sentence so a later aside cannot cancel an
+    earlier reminder.
+    """
+    match = _WILLINGNESS_FRAME.match(text)
+    if match is None:
+        return False
+    return SCHEDULE_CONTENT.search(match.group(1) or "") is None
+
+
 def _non_schedule_create(text):
     """'Create a reminder' is a scheduling ask. 'Create a scene' is not.
 
@@ -1194,6 +1331,10 @@ def looks_like_request(doc, text):
     root = root_token(doc)
 
     if root is None or false_leading_command(doc) or _non_schedule_create(text):
+        return False
+
+    # "Feel like leaving" / "want me to leave" name no scheduling act.
+    if _willingness_without_schedule(text):
         return False
 
     # "Can you send me a digest every Friday?"
@@ -1240,6 +1381,10 @@ def looks_like_declarative_statement(doc, text):
         return False
 
     if false_leading_command(doc) or _non_schedule_create(text):
+        return True
+
+    # "Feel like leaving tomorrow" states a mood, not a schedule.
+    if _willingness_without_schedule(text):
         return True
 
     # Do not treat request-shaped questions as declarative just because
@@ -1291,7 +1436,7 @@ COPULAR_TIME_QUESTION = re.compile(
 def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
-    if RHETORICAL_PROPOSAL.search(text):
+    if RHETORICAL_PROPOSAL.search(text) or COLLOQUIAL_SLOT.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
@@ -1425,6 +1570,8 @@ def looks_like_french_request(text, doc):
         return True
     if (
         FRENCH_POLITE.search(text)
+        or FRENCH_ABILITY.search(text)
+        or FRENCH_COLLOQUIAL.search(text)
         or FRENCH_IMPERATIVE.search(text)
         or FRENCH_PROPOSAL.search(text)
         or FRENCH_SOFT_PROPOSAL.search(text)
@@ -1462,6 +1609,8 @@ def looks_like_french_declarative(text, doc):
 def has_french_negation(text):
     # "n'oublie pas de me rappeler" means "don't forget to remind me".
     # "Pourquoi ne pas se voir" is a proposal, not a cancellation.
+    if FRENCH_SOFT_CANCEL.search(text):
+        return True
     check = FRENCH_FORGET.sub(" ", text)
     check = FORGET_NEGATION.sub(" ", check)
     check = FRENCH_SOFT_PROPOSAL.sub(" ", check)
