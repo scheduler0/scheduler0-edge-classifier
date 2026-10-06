@@ -13,9 +13,9 @@ from unittest.mock import patch
 import spacy
 import spacy.lang
 
-from spacy.symbols import ORTH
+from spacy.symbols import IS_CURRENCY, LANG, LIKE_NUM, NORM, ORTH
 
-from intent import classify, nlp as english_nlp, text_looks_french
+from intent import classify, nlp as english_nlp, should_use_french_locale, text_looks_french
 
 
 # Tokenizer backends that are optional extras on top of the spaCy wheel.
@@ -154,6 +154,63 @@ CASED_STOP_LETTERS = {
 # Ancient Greek treats Greek letters as numerals. Latin does the same for dotless i.
 LETTER_NUMERALS = {"α": {"grc"}, "ı": {"la"}}
 NATIVE_DIGITS = ["०", "০", "๐", "០"]
+
+# Languages whose lexical hooks replace the shared like_num / norm / currency rules.
+LEX_ATTR_GROUPS = {
+    frozenset(): {
+        "af", "bn", "de", "et", "fo", "ga", "gu", "hr", "hu", "is", "it", "ja",
+        "kn", "lij", "lv", "mr", "nb", "nn", "sq", "xx",
+    },
+    frozenset({LANG, LIKE_NUM}): {"am", "bg", "mk", "ti"},
+    frozenset({LIKE_NUM}): {
+        "ar", "az", "ca", "cs", "da", "dsb", "el", "en", "es", "eu", "fa", "fi",
+        "fr", "grc", "he", "hsb", "hy", "ko", "ky", "la", "lb", "lg", "lt", "ml",
+        "nl", "pl", "pt", "ro", "ru", "sa", "si", "sk", "sr", "sv", "ta", "te",
+        "th", "tl", "tn", "tr", "tt", "uk", "ur", "vi", "yo", "zh",
+    },
+    frozenset({LIKE_NUM, NORM}): {"hi", "ne"},
+    frozenset({IS_CURRENCY, LIKE_NUM}): {"id", "ms", "sl"},
+}
+
+# Number words and currency codes that only some language classes recognize.
+# A tokenizer that keeps the string as one token must agree with these sets.
+NUMBER_WORD_LANGUAGES = {
+    "one": {"en"},
+    "satu": {"id", "ms"},
+    "lapan": {"ms"},
+    "ena": {"sl"},
+    "dva": {"cs", "sk", "sl"},
+    "prvi": {"sl"},
+    "एक": {"hi", "ne"},
+    "दस": {"hi"},
+    "አንድ": {"am"},
+}
+CURRENCY_WORD_LANGUAGES = {
+    "USD": {"id", "ms"},
+    "Rp": {"id", "ms"},
+    "RM": {"ms"},
+}
+
+# Hindi and Nepali keep the surface case in token.norm_.
+NORM_KEEPS_CASE_LANGUAGES = {"hi", "ne"}
+# Multiplication glues in the same classes that glue "2+2".
+STAR_GLUED_LANGUAGES = {
+    "da", "de", "fi", "hu", "ky", "lb", "nb", "nl", "nn", "pl", "sv", "tt", "vi",
+}
+# "°C" stays one token here. Latin treats the C as a numeral.
+DEGREE_GLUED_LANGUAGES = {"es", "hu", "vi"}
+DEGREE_STOP_LANGUAGES = {"ro", "sl", "sq"}
+
+DURATION_ENTITY = [
+    {
+        "body": "an hour",
+        "dim": "duration",
+        "value": {"type": "value", "value": "PT1H", "unit": "hour"},
+    }
+]
+NUMBER_ENTITY = [
+    {"body": "9", "dim": "number", "value": {"type": "value", "value": 9}}
+]
 
 # Diacritics in the French marker, and lookalikes that must stay on en_GB.
 FRENCH_DIACRITICS = "àâäçéèêëîïôùûüœæ"
@@ -829,6 +886,119 @@ class SpacyLanguageTests(unittest.TestCase):
                 else:
                     self.assertEqual(["l\u2019heure"], [token.text for token in heure])
 
+    def test_lexical_hooks_number_words_and_currency_codes(self):
+        grouped = {}
+        for code in self.codes:
+            defaults = spacy.util.get_lang_class(code).Defaults
+            grouped.setdefault(frozenset(defaults.lex_attr_getters), set()).add(code)
+            self.assertTrue(callable(defaults.url_match))
+            self.assertTrue(defaults.url_match("https://example.com"))
+            self.assertTrue(defaults.url_match("www.example.com"))
+            self.assertFalse(defaults.url_match("hello"))
+        self.assertEqual(LEX_ATTR_GROUPS, grouped)
+
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            for word, languages in NUMBER_WORD_LANGUAGES.items():
+                with self.subTest(code=code, word=word):
+                    doc = self.round_trip(pipeline, word)
+                    if [token.text for token in doc] == [word]:
+                        self.assertEqual(code in languages, doc[0].like_num)
+                        self.assertFalse(doc[0].is_currency)
+            for word, languages in CURRENCY_WORD_LANGUAGES.items():
+                with self.subTest(code=code, word=word):
+                    doc = self.round_trip(pipeline, word)
+                    if [token.text for token in doc] == [word]:
+                        self.assertEqual(code in languages, doc[0].is_currency)
+                        self.assertFalse(doc[0].like_num)
+
+    def test_case_shape_and_repeated_whitespace(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                upper = self.round_trip(pipeline, "HELLO")
+                title = self.round_trip(pipeline, "Hello")
+                if code == "zh":
+                    self.assertEqual(list("HELLO"), [token.text for token in upper])
+                    self.assertEqual(list("Hello"), [token.text for token in title])
+                    self.assertTrue(all(token.is_upper and token.is_title for token in upper))
+                    self.assertEqual(["h", "e", "l", "l", "o"], [token.norm_ for token in upper])
+                    self.assertTrue(title[0].is_title)
+                    self.assertTrue(all(token.is_lower for token in title[1:]))
+                else:
+                    self.assertEqual(["HELLO"], [token.text for token in upper])
+                    self.assertEqual(["Hello"], [token.text for token in title])
+                    self.assertTrue(upper[0].is_upper)
+                    self.assertFalse(upper[0].is_title)
+                    self.assertEqual("XXXX", upper[0].shape_)
+                    self.assertTrue(title[0].is_title)
+                    self.assertEqual("Xxxxx", title[0].shape_)
+                    expected_norm = "HELLO" if code in NORM_KEEPS_CASE_LANGUAGES else "hello"
+                    self.assertEqual(expected_norm, upper[0].norm_)
+                    title_norm = "Hello" if code in NORM_KEEPS_CASE_LANGUAGES else "hello"
+                    self.assertEqual(title_norm, title[0].norm_)
+
+                tabs = self.round_trip(pipeline, "a\t\tb")
+                self.assertEqual(["a", "\t\t", "b"], [token.text for token in tabs])
+                self.assertTrue(tabs[1].is_space)
+                self.assertEqual(2, len(tabs[1].text))
+                self.assertEqual("", tabs[0].whitespace_)
+
+    def test_star_degree_ellipsis_and_feminine_ordinal(self):
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            with self.subTest(code=code):
+                star = self.round_trip(pipeline, "2*3")
+                if code in STAR_GLUED_LANGUAGES:
+                    self.assertEqual(["2*3"], [token.text for token in star])
+                    self.assertFalse(star[0].like_num)
+                elif code == "grc":
+                    self.assertEqual(["2", "*", "3"], [token.text for token in star])
+                    self.assertFalse(any(token.like_num for token in star))
+                    self.assertTrue(star[1].is_punct)
+                else:
+                    self.assertEqual(["2", "*", "3"], [token.text for token in star])
+                    self.assertEqual([True, False, True], [token.like_num for token in star])
+                    self.assertTrue(star[1].is_punct)
+                    self.assertEqual(code == "zh", star[1].is_stop)
+
+                degree = self.round_trip(pipeline, "\u00b0C")
+                if code in DEGREE_GLUED_LANGUAGES:
+                    self.assertEqual(["\u00b0C"], [token.text for token in degree])
+                    self.assertEqual("\u00b0c", degree[0].norm_)
+                    self.assertTrue(degree[0].is_title)
+                else:
+                    self.assertEqual(["\u00b0", "C"], [token.text for token in degree])
+                    if code in NORM_KEEPS_CASE_LANGUAGES:
+                        self.assertEqual("C", degree[1].norm_)
+                    else:
+                        self.assertEqual("c", degree[1].norm_)
+                    self.assertEqual(code == "la", degree[1].like_num)
+                    self.assertEqual(code in DEGREE_STOP_LANGUAGES, degree[1].is_stop)
+
+                ellipsis = self.round_trip(pipeline, "\u2026\u2026")
+                if code == "vi":
+                    self.assertEqual(["\u2026\u2026"], [token.text for token in ellipsis])
+                    self.assertEqual("\u2026\u2026", ellipsis[0].norm_)
+                    self.assertTrue(ellipsis[0].is_punct)
+                else:
+                    self.assertEqual(["\u2026", "\u2026"], [token.text for token in ellipsis])
+                    self.assertEqual(["...", "..."], [token.norm_ for token in ellipsis])
+                    self.assertEqual(code == "zh", all(token.is_stop for token in ellipsis))
+
+                feminine = self.round_trip(pipeline, "2\u00aa")
+                if code == "zh":
+                    self.assertEqual(["2", "\u00aa"], [token.text for token in feminine])
+                    self.assertTrue(feminine[0].like_num)
+                    self.assertTrue(feminine[1].is_alpha and feminine[1].is_lower)
+                else:
+                    self.assertEqual(["2\u00aa"], [token.text for token in feminine])
+                    self.assertEqual(code == "pt", feminine[0].like_num)
+                    self.assertFalse(feminine[0].is_alpha)
+
     def round_trip(self, pipeline, text):
         doc = pipeline(text)
         self.assertEqual(text, doc.text)
@@ -1080,6 +1250,108 @@ class MultilingualClassifyTests(unittest.TestCase):
                 self.assertEqual(pos, result["features"]["root"]["pos"])
                 self.assertEqual(subject, result["features"]["has_subject"])
                 self.assertEqual(text, result["text"])
+
+    def test_duration_entity_matches_a_time_entity(self):
+        # A duration is a temporal signal on every Duckling sample. A number
+        # entity is not, so it leaves the empty-parse decision in place.
+        for code, text in DUCKLING_LANGUAGE_SAMPLES.items():
+            with self.subTest(language=code):
+                with patch("intent.duckling_parse", return_value=TIME_ENTITY):
+                    timed = classify(text)
+                with patch("intent.duckling_parse", return_value=DURATION_ENTITY):
+                    duration = classify(text)
+                with patch("intent.duckling_parse", return_value=[]):
+                    empty = classify(text)
+                with patch("intent.duckling_parse", return_value=NUMBER_ENTITY):
+                    number = classify(text)
+
+                self.assertEqual(
+                    (timed["decision"], timed["reason"], timed["features"]["has_temporal_signal"]),
+                    (
+                        duration["decision"],
+                        duration["reason"],
+                        duration["features"]["has_temporal_signal"],
+                    ),
+                )
+                self.assertTrue(timed["features"]["duckling_has_time"])
+                self.assertTrue(duration["features"]["duckling_has_time"])
+                self.assertEqual(
+                    (empty["decision"], empty["reason"], empty["features"]["has_temporal_signal"]),
+                    (
+                        number["decision"],
+                        number["reason"],
+                        number["features"]["has_temporal_signal"],
+                    ),
+                )
+                self.assertFalse(number["features"]["duckling_has_time"])
+                self.assertEqual(text, duration["text"])
+                self.assertEqual(text, number["text"])
+
+    def test_clock_spellings_and_decomposed_diacritics(self):
+        # A capital H, a leading zero, and a trailing dot still match the
+        # French clock. Gluing the preposition to the hour removes the
+        # boundary the pattern needs.
+        clocks = {
+            "9H": ("clarify", "temporal_signal_without_clear_request", "VERB", "9h"),
+            "09h": ("clarify", "temporal_signal_without_clear_request", "NOUN", "09h"),
+            "9h.": ("clarify", "temporal_signal_without_clear_request", "NOUN", "9h"),
+        }
+        for text, (decision, reason, pos, lemma) in clocks.items():
+            with self.subTest(text=text):
+                self.assertTrue(text_looks_french(text))
+                self.assertTrue(should_use_french_locale(text))
+                with patch("intent.duckling_parse", return_value=[]):
+                    result = classify(text)
+                self.assertEqual((decision, reason), (result["decision"], result["reason"]))
+                self.assertTrue(result["features"]["has_temporal_signal"])
+                self.assertFalse(result["features"]["looks_like_request"])
+                self.assertEqual(pos, result["features"]["root"]["pos"])
+                self.assertEqual(lemma, result["features"]["root"]["lemma"])
+
+        with patch("intent.duckling_parse", return_value=[]):
+            glued = classify("\u00e09h")
+        self.assertTrue(text_looks_french("\u00e09h"))
+        self.assertTrue(should_use_french_locale("\u00e09h"))
+        self.assertEqual("reject", glued["decision"])
+        self.assertEqual("not_a_schedule_request", glued["reason"])
+        self.assertFalse(glued["features"]["has_temporal_signal"])
+        self.assertEqual("\u00e09h", glued["features"]["root"]["lemma"])
+
+        # Combining acute is not in the French marker. The precomposed letter is.
+        for text, french, locale, decision, reason in (
+            ("caf\u00e9", True, "fr_FR", "reject", "not_a_schedule_request"),
+            ("cafe\u0301", False, "en_GB", "reject", "not_a_schedule_request"),
+            ("\u00e9", True, "fr_FR", "reject", "not_a_schedule_request"),
+            ("e\u0301", False, "en_GB", "clarify", "request_without_temporal_signal"),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(french, text_looks_french(text))
+                self.assertEqual(french, should_use_french_locale(text))
+                with patch("intent.requests.post") as post:
+                    post.return_value.json.return_value = []
+                    post.return_value.raise_for_status.return_value = None
+                    result = classify(text)
+                self.assertEqual(locale, post.call_args.kwargs["data"]["locale"])
+                self.assertEqual(text, post.call_args.kwargs["data"]["text"])
+                self.assertEqual((decision, reason), (result["decision"], result["reason"]))
+
+        with patch("intent.duckling_parse", return_value=[]):
+            known = classify("well-known")
+        self.assertEqual("clarify", known["decision"])
+        self.assertEqual("request_without_temporal_signal", known["reason"])
+        self.assertEqual("know", known["features"]["root"]["lemma"])
+        self.assertEqual("VERB", known["features"]["root"]["pos"])
+        self.assertFalse(known["features"]["has_subject"])
+
+        with patch("intent.duckling_parse", return_value=[]):
+            shouted = classify("REMIND ME TOMORROW")
+        self.assertEqual("clarify", shouted["decision"])
+        self.assertEqual("request_without_temporal_signal", shouted["reason"])
+        self.assertFalse(shouted["features"]["has_temporal_signal"])
+        with patch("intent.duckling_parse", return_value=TIME_ENTITY):
+            shouted_time = classify("REMIND ME TOMORROW")
+        self.assertEqual("allow", shouted_time["decision"])
+        self.assertEqual("request_with_temporal_signal", shouted_time["reason"])
 
 
 if __name__ == "__main__":
