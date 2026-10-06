@@ -73,6 +73,18 @@ GROUP_PROPOSAL = re.compile(
     r"\bwe\s+(?:might|may|could|should)\s+want\s+to\s+(?:meet|sync)\b"
     r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
     r"|"
+    # "We should reconnect/regroup/huddle" is a meeting. An object
+    # ("reconnect the server", "regroup the files") is not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:reconnect|regroup|huddle)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"touch\s+base\b"
+    r"|"
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"hop\s+on\s+(?:a|an)\s+(?:call|meeting|sync|huddle)\b"
+    r"|"
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+meet\b"
     r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
@@ -196,7 +208,40 @@ HEDGED_PROPOSAL = re.compile(
     # "I wouldn't mind meeting" / "Wouldn't mind a call" accepts, it does not cancel.
     r"\b(?:i\s+)?(?:would(?:n't|\s+not)|do(?:n't|\s+not)|dont)\s+mind\s+"
     r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|syncing\b|"
-    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)",
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)"
+    r"|"
+    # "You wanna meet" / "Wanna hop on a call". "Wanna leave" and
+    # "wanna meet the client" are not scheduling asks.
+    r"\b(?:(?:do\s+)?you\s+)?wanna\s+(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:(?:do\s+)?you\s+)?wanna\s+hop\s+on\s+(?:a|an)\s+"
+    r"(?:call|meeting|sync|huddle)\b"
+    r"|"
+    r"\b(?:are\s+you\s+|you\s+)?up\s+to\s+(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:are\s+you\s+|you\s+)?up\s+to\s+(?:a|an)\s+"
+    r"(?:call|meeting|sync|huddle)\b"
+    r"|"
+    r"\b(?:are\s+you\s+|you\s+)?in\s+the\s+mood\s+to\s+(?:meet|sync)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:are\s+you\s+|you\s+)?in\s+the\s+mood\s+for\s+(?:a|an)\s+"
+    r"(?:call|meeting|sync|huddle)\b"
+    r"|"
+    r"\b(?:do\s+)?you\s+fancy\s+(?:a|an)\s+(?:call|meeting|sync|huddle|chat)\b"
+    r"|"
+    r"\b(?:do\s+)?you\s+fancy\s+meeting\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+sooner\s+(?:we\s+)?"
+    r"(?:meet|schedule|book|reschedule)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+just\s+as\s+soon\s+(?:we\s+)?"
+    r"(?:meet|schedule|book|reschedule)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)",
     re.I,
 )
 
@@ -219,6 +264,12 @@ RHETORICAL_PROPOSAL = re.compile(
     r"saturday|sunday|next|\d)\b"
     r"|"
     r"^\s*what\s+(?:do\s+you\s+)?say\s+we\s+(?:meet|schedule|book|reschedule|move)\b"
+    r"|"
+    # "What do you say to meeting Thursday?" proposes a slot.
+    # "What do you think about meeting" stays an informational question.
+    r"^\s*what\s+do\s+you\s+say\s+to\s+"
+    r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|"
+    r"(?:a|an)\s+(?:call|meeting|sync|huddle))\b"
     r"|"
     r"\b(?:could|would|should)(?:n't|\s+not)\s+we\s+"
     r"(?:meet|schedule|book|reschedule|move)\b"
@@ -318,14 +369,35 @@ FIRST_PERSON_SCHEDULE = re.compile(
     r"(?:reminded|scheduled|booked)\b"
     r"|"
     r"\bi(?:['’]m|\s+am)\s+(?:gonna|going\s+to)\s+need\s+(?:a|an|the)\s+"
-    r"(?:reminder|meeting|call|sync|appointment)\b",
+    r"(?:reminder|meeting|call|sync|appointment)\b"
+    r"|"
+    # "I can make Thursday" means the speaker can attend. "I can make dinner"
+    # does not. "I'll schedule" / "I'll book the room" is a commitment to
+    # put something on the calendar; "I'll book a flight" is not.
+    r"\bi\s+can\s+make\s+(?:it\s+)?(?:on\s+)?"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
+    r"|"
+    r"\bi\s+can\s+make\s+(?:the|a|our|this)\s+(?:[\w'’]+\s+){0,2}"
+    r"(?:meeting|call|sync|appointment)\b"
+    r"|"
+    r"\bi(?:['’]ll|\s+will)\s+(?:schedule|reschedule)\b"
+    r"|"
+    r"\bi(?:['’]ll|\s+will)\s+set\s+(?:a|an|the)\s+"
+    r"(?:reminder|meeting|call|sync)\b"
+    r"|"
+    r"\bi(?:['’]ll|\s+will)\s+book\s+(?:the|a|our|my)\s+"
+    r"(?:room|call|meeting|sync|review|slot)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+a\s+yes\s+for\s+(?:the\s+|a\s+|an\s+)?"
+    r"(?:[\w'’]+\s+){0,3}(?:call|meeting|sync|huddle|appointment)\b",
     re.I,
 )
 
 # "how about" / "what if" are proposals only when they name a scheduling act.
 # "What if it rains every Monday?" stays informational.
 PROPOSAL_PREFIX = re.compile(
-    r"\b(?:how\s+about|what\s+if)\b",
+    r"\b(?:how\s+about|how['’]s\s+about|howsabout|what\s+if)\b",
     re.I,
 )
 
@@ -348,6 +420,10 @@ POLITE_INDIRECT = re.compile(
     r"\b(?:can|could|may|might)\s+i\s+(?:get|have)\s+(?:a|an|the)\s+"
     r"(?:reminder|meeting|call|sync|appointment)\b"
     r"|"
+    # "Could I get 15 minutes tomorrow?" asks for a slot. "Could I get a
+    # coffee tomorrow?" does not.
+    r"\b(?:can|could|may|might)\s+i\s+get\s+\d+\s*(?:minutes?|mins?)\b"
+    r"|"
     r"\bdo\s+you\s+want\s+to\s+(?:meet|schedule|book|sync|reschedule)\b"
     r"(?!\s+(?:the|a|an|our|my|your)\b)"
     r"|"
@@ -365,6 +441,24 @@ POLITE_INDIRECT = re.compile(
     r"\bclear\s+(?:my|the|our)\s+calendar\b"
     r"|"
     r"\bcircle\s+back\b",
+    re.I,
+)
+
+# "We good for a call Thursday?" drops the copula. Pizza is not a slot.
+WE_GOOD_FOR_SLOT = re.compile(
+    r"^\s*we\s+good\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment)\b",
+    re.I,
+)
+
+# "A quick sync tomorrow?" / "Quick call tomorrow?" offers a slot.
+# Bare "Sync tomorrow?" is left alone. A party or a quick lunch is not a slot.
+QUICK_SLOT_QUESTION = re.compile(
+    r"^\s*(?:(?:a|an)\s+)?(?:quick|short)\s+"
+    r"(?:sync|call|meeting|standup|huddle)\b(?!\s+me\b)[^?\n]*\?"
+    r"|"
+    r"^\s*(?:a|an)\s+(?:quick\s+|short\s+)?"
+    r"(?:sync|meeting|standup|huddle|call)\b(?!\s+me\b)[^?\n]*\?",
     re.I,
 )
 
@@ -737,7 +831,31 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
-    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?"
+    r"|"
+    # "Rendez-vous demain" and "on se donne rendez-vous" name a slot.
+    # "Le rendez-vous est demain" stays a statement (it does not match).
+    r"^\s*rendez-vous\b"
+    r"|"
+    r"\bon\s+se\s+donne\s+(?:rendez-vous|rdv)\b"
+    r"|"
+    r"\bva\s+falloir\b.{0,50}\bse\s+(?:voir|voie|retrouver|parler|"
+    r"r[eé]unir|caler)\b"
+    r"|"
+    r"\bsi\s+on\s+tentait\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche|à\s+\d|\d{1,2}\s*h|un\s+point|"
+    r"une\s+r[eé]union|de\s+se\s+voir)\b"
+    r"|"
+    r"^\s*plut[oô]t\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|"
+    r"vendredi|samedi|dimanche|à\s+\d|\d)"
+    r"|"
+    # "On se voit jeudi, pas demain" picks a slot. "On se voit demain" does not.
+    r"\bon\s+se\s+(?:voit|retrouve|parle|cale)\b[^.\n]{0,40},\s*pas\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b"
+    r"|"
+    r"\bon\s+d[eé]cale\s+(?:ça\s+|ca\s+)?(?:à|a|au|aux|pour)\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|samedi|"
+    r"dimanche|\d)",
     re.I,
 )
 
@@ -780,6 +898,12 @@ FRENCH_NEGATED_IMPERATIVE = re.compile(
 # Bare "Mets la table demain" is not one.
 FRENCH_LIGHT_IMPERATIVE = re.compile(
     r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|note(?:z)?(?!\s+que\b))\b",
+    re.I,
+)
+
+# "Glisse la réunion à vendredi" moves a meeting. "Glisse la chaise" does not.
+FRENCH_GLISSE = re.compile(
+    r"(?:^|[,:;]\s*)glisse(?:z)?\b",
     re.I,
 )
 
@@ -985,7 +1109,7 @@ def has_scheduling_proposal(text):
     # "How about meeting tomorrow" and "How about a call tomorrow" propose a
     # slot. "How about tomorrow" and "How about meeting notes" do not.
     if re.search(
-        r"^\s*how\s+about\s+meeting(?=\s*(?:[?.!]|$)|"
+        r"^\s*how(?:\s+about|['’]s\s+about|sabout)\s+meeting(?=\s*(?:[?.!]|$)|"
         r"\s+(?:tomorrow|today|tonight|again|at|on|every|each|next|this|"
         r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
         r"morning|afternoon|evening|night|\d)\b)",
@@ -994,7 +1118,8 @@ def has_scheduling_proposal(text):
     ):
         return True
     if re.search(
-        r"^\s*how\s+about\s+(?:a|an)\s+(?:call|meeting|sync|chat|appointment)\b",
+        r"^\s*how(?:\s+about|['’]s\s+about|sabout)\s+(?:a|an)\s+"
+        r"(?:call|meeting|sync|chat|appointment)\b",
         text,
         re.I,
     ):
@@ -1010,6 +1135,7 @@ def has_scheduling_proposal(text):
     # This avoids matching "the book club" or "my book" where "book" is a noun
     proposal_pattern = re.compile(
         r"\b(?:we|i)\s+(?:schedule|book|meet|reschedule|move|cancel)\b"
+        r"|\b(?:we|i)\s+met\b(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
         r"|\b(?:we|i)\s+sync\b(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
         r"|\b(?:we|i)\s+do\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|"
         r"thursday|friday|saturday|sunday|next|\d)\b"
@@ -1042,6 +1168,8 @@ def has_request_phrase(text):
         FRENCH_PROPOSAL,
         FRENCH_SOFT_PROPOSAL,
         FRENCH_CANCEL_REQUEST,
+        WE_GOOD_FOR_SLOT,
+        QUICK_SLOT_QUESTION,
     )
     # A copular subject ("Schedule is full") must not count as "schedule ...".
     if COPULAR_COMMAND.search(text):
@@ -1050,6 +1178,25 @@ def has_request_phrase(text):
         any(pattern.search(text) for pattern in patterns)
         or has_scheduling_proposal(text)
         or has_trailing_schedule_request(text)
+        or _slot_suit(text)
+    )
+
+
+def _slot_suit(text):
+    """'Thursday suit you for a call' offers a slot. A picnic does not.
+
+    'Does Thursday suit ...?' stays a question, same as 'Does Thursday work'.
+    Bare 'Would Thursday suit you?' names a time and no meeting, so it is not
+    a request by itself.
+    """
+    if re.match(r"^\s*(?:do|does|did)\b", text, re.I):
+        return False
+    return bool(
+        re.search(
+            r"\bsuit\b.{0,40}\b(?:call|meeting|sync|chat|appointment|huddle)\b",
+            text,
+            re.I,
+        )
     )
 
 
@@ -1215,7 +1362,12 @@ def looks_like_request(doc, text):
     # "Does Thursday work for a call?" is a question whose root is "do",
     # not an imperative. Emphatic "Do remind me" has root "remind".
     if root.pos_ == "VERB" and not has_subject(doc):
-        if not (root.lemma_.lower() == "do" and "?" in text):
+        lemma = root.lemma_.lower()
+        # "Would Thursday suit you for a picnic?" is not an imperative.
+        # A suit-for-a-call ask is matched by _slot_suit above.
+        if lemma == "suit" and not _slot_suit(text):
+            pass
+        elif not (lemma == "do" and "?" in text):
             return True
 
     # "Book conference room B", "Snooze the reminder" — spaCy drops the verb.
@@ -1433,6 +1585,10 @@ def looks_like_french_request(text, doc):
         or FRENCH_NEGATED_IMPERATIVE.search(text)
         or (
             FRENCH_LIGHT_IMPERATIVE.search(text)
+            and FRENCH_SCHEDULE_NOUN.search(text)
+        )
+        or (
+            FRENCH_GLISSE.search(text)
             and FRENCH_SCHEDULE_NOUN.search(text)
         )
         or FRENCH_YESNO_REQUEST.search(text)
