@@ -66,7 +66,22 @@ Its implementation uses these imperfect heuristics:
   scrap / kill / drop the meeting, bare "forget the meeting", "no meetings",
   and "skip Friday" clarify. "Drop me a reminder" stays a request.
   "Remind me what/when/where" is informational. "Could ya" counts as "could you".
-  "We should sync" is a meeting unless sync takes an object. "It'd be great to
+  "We should sync" is a meeting unless sync takes an object. "We should
+  reconnect", "regroup", "huddle", "touch base", and "hop on a call" are
+  meetings unless they take an object ("reconnect the server", "hop on a
+  bus"). "You wanna meet", "up to meet", "in the mood for a call", and
+  "you fancy a call" are requests; "wanna leave", "up to leave", and
+  "fancy a coffee" are not. "I can make Thursday" and "I can make the
+  meeting" attend a slot; "I can make dinner" does not. "I'll schedule" and
+  "I'll book the room" commit to a calendar act; "I'll book a flight" does
+  not. "Could I get 15 minutes" asks for a slot. "Suit you for a call" is a
+  slot offer; "suit you for a picnic" and bare "would Thursday suit you" are
+  not, and "does Thursday suit" stays a question. "How's about" and
+  "howsabout" are "how about". "What if we met" is a proposal unless it is
+  "met the client". "What do you say to meeting" proposes a slot. "We good
+  for a call" and "a quick sync ...?" / "quick call ...?" offer a slot.
+  "I'm a yes for the call" accepts one. "I'd sooner meet" is a preference.
+  "It'd be great to
   meet", "I'm gonna need a reminder", "the team should meet", and "I'd like us
   to meet" are requests. "Send volumes grow" is a headline, not a command.
   "skip" / "avoid" / "refrain from" plus a meeting, reminder, or emailing
@@ -87,6 +102,9 @@ Its implementation uses these imperfect heuristics:
   "pourrait-on se voir", "on peut se voir", "si on se voyait",
   "ce serait bien de se voir", "je préférerais qu'on se voie",
   "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
+  "rendez-vous demain", "on se donne rendez-vous", "va falloir se voir",
+  "si on tentait demain", "plutôt jeudi", "on se voit jeudi, pas demain",
+  "on décale à vendredi", "glisse la réunion" (not "glisse la chaise"),
   "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
   "Pourquoi ne pas" is not a cancellation and not an informational question.
   "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
