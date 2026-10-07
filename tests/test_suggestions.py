@@ -284,6 +284,91 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_isolate_marks_extensions_and_special_codes(self):
+        # A known region still wins when a Unicode extension or extra padding
+        # follows it. Marks inside the tag, or a script subtag in the region
+        # slot, are not separators.
+        kept = {
+            "en_US_u_nu_latn": "en_US",
+            "en-AU-u-ca-gregory": "en_AU",
+            "\t\ten_PH\t": "en_PH",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en\u200d_US",
+            "en\u200c_US",
+            "en\u034f_US",
+            "en\u2066_US",
+            "en\u2067_US",
+            "en\u2068_GB",
+            "en\u00a0_US",
+            "en\u3000_US",
+            "en_US\u2067",
+            "en_US\u2068",
+            "en_GB\u202d",
+            "en_U\u00adS",
+            "en_Cyrl",
+            "en_Latn",
+            "en-Cyrl-US",
+            "en_US\U0001f1fa\U0001f1f8",
+            "en@calendar=gregorian",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "und",
+            "mul",
+            "zxx",
+            "mis",
+            "xx",
+            "i-default",
+            "i-navajo",
+            "\u2067en_US",
+            "\u2068en",
+            "\u202ben_US",
+            "\u202den",
+            "\u0332en_US",
+            "e\u200dn_US",
+            "fr\u2067",
+            "\u2067fr",
+            "de\u202b",
+            "123.0",
+            "None",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_rejects_special_codes_and_forwards_extension_locales(self):
+        message = [_msg("I'll send you the proposal tomorrow.")]
+        for locale in ("und", "\u2067fr", "zxx"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(_request(message, locale=locale))
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(_request(message, locale="en_US_u_nu_latn"))
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(_request(message, locale="en\u2067_US"))
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
