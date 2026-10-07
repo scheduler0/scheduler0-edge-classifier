@@ -65,13 +65,24 @@ GROUP_PROPOSAL = re.compile(
     r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
     r"(?:schedule|book|reschedule|move)\b"
     r"|"
-    # "sync" is a meeting only when it has no object: "sync the files" is not.
+    # "sync" is a meeting only when it has no object: "sync the files" and
+    # "sync up the files" are not. "sync up tomorrow" still is.
     r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
-    r"(?:meet|sync)\b"
+    r"(?:meet|sync(?!\s+up\s+(?:the|a|an|our|my|your|his|her|their|it)\b))\b"
     r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
     r"|"
-    r"\bwe\s+(?:might|may|could|should)\s+want\s+to\s+(?:meet|sync)\b"
+    r"\bwe\s+(?:might|may|could|should)\s+want\s+to\s+"
+    r"(?:meet|sync(?!\s+up\s+(?:the|a|an|our|my|your|his|her|their|it)\b))\b"
     r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    # "follow up" / "check in" / "debrief" / "get together" name a meeting.
+    # "follow the river", "check in the code", and "jump on a bus" do not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:follow\s+up|debrief|convene|"
+    r"check\s+in(?!\s+(?:the|a|an|our|my|your)\b)|"
+    r"get\s+together(?!\s+(?:the|a|an)\b)|"
+    r"sit\s+down(?!\s+(?:the|a|an)\b)|"
+    r"jump\s+on\s+(?:a\s+)?(?:call|meeting|sync|zoom))\b"
     r"|"
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+meet\b"
@@ -95,7 +106,15 @@ NEED_TO_SCHEDULE = re.compile(
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
     r"|"
     r"\b(?:someone|somebody)\s+needs?\s+to\s+"
-    r"(?:remind|email|schedule|book|ping|notify|send|call)\b"
+    r"(?:remind|email|schedule|book|ping|notify|send|call|debrief|convene)\b"
+    r"|"
+    # "We need to sync" is a meeting. "We need to sync the files" is not.
+    r"\b(?:i|we|the\s+(?:team|crew))\s+needs?\s+to\s+(?:"
+    r"sync(?!\s+up\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|debrief|convene|follow\s+up"
+    r"|check\s+in(?!\s+(?:the|a|an|our|my|your)\b)"
+    r")\b"
     r"|"
     r"^\s*(?:someone|somebody)\s+"
     r"(?:remind|email|schedule|book|ping|notify|send)\b"
@@ -132,6 +151,10 @@ HEDGED_PROPOSAL = re.compile(
     r"\b(?:are|is)\s+(?:you|someone|somebody|anyone)\s+able\s+to\s+"
     r"(?:meet|schedule|book|remind|reschedule)\b"
     r"|"
+    # "Anybody able to meet" drops the copula. "able to leave" is not a meeting.
+    r"\b(?:is\s+|are\s+)?(?:anybody|anyone|someone|somebody)\s+able\s+to\s+"
+    r"(?:meet|schedule|book|remind|reschedule|sync|debrief)\b"
+    r"|"
     r"\bit\s+would\s+be\s+(?:great|nice|good)\s+if\s+(?:we|you)\s+"
     r"(?:could|can|would)\s+(?:meet|schedule|book|remind|reschedule)\b"
     r"|"
@@ -154,9 +177,14 @@ HEDGED_PROPOSAL = re.compile(
     r"\bsuppose\s+we\s+(?:meet|schedule|book)\b"
     r"(?!\s+(?:the|a|an)\b)"
     r"|"
-    r"\bi(?:['’]d|\s+would)\s+rather\s+(?:we\s+)?"
-    r"(?:meet|schedule|book|reschedule)\b"
+    r"\b(?:i|we)(?:['’]d|\s+would)\s+rather\s+(?:we\s+)?"
+    r"(?:meet|schedule|book|reschedule|sync|debrief)\b"
     r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    # "I'd rather do Thursday" picks a slot. "I'd rather do the laundry" does not.
+    r"\b(?:i|we)(?:['’]d|\s+would)\s+rather\s+(?:we\s+)?(?:do|did)\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
     r"|"
     r"\bi(?:['’]d|\s+would)\s+prefer\s+(?:to\s+)?"
     r"(?:meet|schedule|book|reschedule)\b"
@@ -196,7 +224,33 @@ HEDGED_PROPOSAL = re.compile(
     # "I wouldn't mind meeting" / "Wouldn't mind a call" accepts, it does not cancel.
     r"\b(?:i\s+)?(?:would(?:n't|\s+not)|do(?:n't|\s+not)|dont)\s+mind\s+"
     r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|syncing\b|"
-    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)",
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)"
+    r"|"
+    # "It would be better to meet" / "Better we meet". "better to leave" is not.
+    r"\bit\s+would\s+be\s+better\s+to\s+"
+    r"(?:meet|schedule|book|reschedule|sync|debrief)\b"
+    r"|"
+    r"\bbetter\s+(?:if\s+we|we|to)\s+"
+    r"(?:meet|schedule|book|sync|debrief|convene)\b"
+    r"|"
+    # "Leaning toward a call" / "leaning toward Thursday for the sync".
+    # "Leaning toward pizza" names no calendar act.
+    r"\bleaning\s+toward\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|standup)\b"
+    r"|"
+    r"\bleaning\s+toward\s+\S+\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|standup)\b"
+    r"|"
+    r"\bdown\s+for\s+\w+['’]s\s+(?:call|meeting|sync|standup)\b"
+    r"|"
+    # "I vote Thursday for the call" / "my vote is we meet".
+    # "I vote pizza" is not a slot.
+    r"\bi\s+vote\s+(?:for\s+)?(?:tomorrow|today|tonight|monday|tuesday|"
+    r"wednesday|thursday|friday|saturday|sunday|next|\d)\b.{0,50}"
+    r"\b(?:call|meeting|sync|standup)\b"
+    r"|"
+    r"\bmy\s+vote\s+is\s+(?:that\s+)?we\s+(?:meet|sync|debrief)\b"
+    r"(?!\s+(?:the|a|an)\b)",
     re.I,
 )
 
@@ -219,6 +273,11 @@ RHETORICAL_PROPOSAL = re.compile(
     r"saturday|sunday|next|\d)\b"
     r"|"
     r"^\s*what\s+(?:do\s+you\s+)?say\s+we\s+(?:meet|schedule|book|reschedule|move)\b"
+    r"|"
+    # "What say Thursday" proposes a slot. "What say we leave" does not.
+    r"^\s*what\s+(?:do\s+you\s+)?say\s+(?:to\s+)?"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b"
     r"|"
     r"\b(?:could|would|should)(?:n't|\s+not)\s+we\s+"
     r"(?:meet|schedule|book|reschedule|move)\b"
@@ -261,6 +320,14 @@ CONTRASTIVE_TIME_WORDS = {
     "weekend",
     "weekday",
 }
+
+# "Who can book the room tomorrow?" asks someone to schedule.
+# "Who booked the room?" and "Who should I book it for?" ask for a fact.
+WHO_CAN_SCHEDULE = re.compile(
+    r"^\s*(?:who|which\s+of\s+us)\s+(?:can|could|should|shall)\s+"
+    r"(?:book|schedule|reschedule|remind)\b",
+    re.I,
+)
 
 # "Can the team meet every Friday?" — collective scheduling question.
 COLLECTIVE_REQUEST = re.compile(
@@ -502,9 +569,24 @@ LEADING_ACTIONS = {
     "send",
     "follow",
     "move",
+    "convene",
+    "huddle",
+    "debrief",
 }
 
 INFO_ROOT_LEMMAS = {"tell", "explain", "describe", "define", "summarize"}
+
+# A subject-less attitude verb is a request only when it names a calendar act.
+# "Prefer to meet" and "would love a sync" are. "Prefer to leave",
+# "leaning toward pizza", and "count me in for pizza" are not.
+ATTITUDE_LEMMAS = {"love", "prefer", "lean", "aim", "look", "hope", "want", "count"}
+ATTITUDE_SCHEDULE = re.compile(
+    r"\b(?:meet(?:ing)?s?|schedul\w*|book(?:ing|ed)?|reschedul\w*|syncs?|"
+    r"standups?|huddles?|calls?|reminders?|appointments?|debriefs?|convene)\b"
+    r"|"
+    r"\bgrab\s+(?:\d+\s+)?(?:minutes?|mins?|time)\b",
+    re.I,
+)
 
 SCHEDULE_ACTION_LEMMAS = {
     "remind",
@@ -721,7 +803,7 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\b(?:ça|ca)\s+(?:te|vous)\s+va\b"
     r"|"
     r"\bon\s+se\s+fait\s+(?:un|une)\s+"
-    r"(?:point|call|r[eé]union|cr[eé]neau|visio)\b[^?\n]{0,80}\?"
+    r"(?:point|call|r[eé]union|cr[eé]neau|visio|brief|revue)\b[^?\n]{0,80}\?"
     r"|"
     r"\bpourrait-on\s+se\s+(?:voir|retrouver|caler|parler|r[eé]unir)\b"
     r"|"
@@ -737,7 +819,58 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
-    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?"
+    r"|"
+    # "Chaud pour jeudi" names a slot. "Chaud pour le match" does not.
+    r"\bchaud\s+pour\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche)\b"
+    r"|"
+    # "On se dit jeudi ?" proposes. Without "?" it states a fact.
+    r"\bon\s+se\s+dit\s+(?:à\s+)?(?:demain|aujourd['’]?hui|lundi|mardi|"
+    r"mercredi|jeudi|vendredi|samedi|dimanche)\b[^?\n]{0,40}\?"
+    r"|"
+    r"^\s*va\s+pour\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche|\d)\b"
+    r"|"
+    r"^\s*sinon\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche)\b[^?\n]*\?"
+    r"|"
+    r"\bje\s+te\s+(?:bloque|r[eé]serve|cale)\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|un\s+(?:point|cr[eé]neau)|une\s+(?:r[eé]union|visio))\b"
+    r"|"
+    r"\b(?:tu|vous)\s+me\s+gardes?\b[^?\n]{0,40}\bpour\s+(?:le|la|un|une)\s+"
+    r"(?:point|r[eé]union|call|visio|cr[eé]neau)\b[^?\n]*\?"
+    r"|"
+    r"(?:^|[,:;]\s*)garde-moi\s+(?:demain|lundi|mardi|mercredi|jeudi|"
+    r"vendredi|samedi|dimanche)\s+pour\s+(?:le|la|un|une)\s+"
+    r"(?:point|r[eé]union|call|visio|cr[eé]neau)\b"
+    r"|"
+    r"\brecule(?:-moi)?\s+(?:la\s+r[eé]union|le\s+point|le\s+call|"
+    r"la\s+visio|le\s+cr[eé]neau)\b"
+    r"|"
+    r"\b(?:tu|vous)\s+me\s+d[eé]cales?\s+(?:ça|ca|le\s+point|"
+    r"la\s+r[eé]union|la\s+visio)\b"
+    r"|"
+    # Contrast keeps the meeting: "on se retrouve jeudi, pas demain".
+    r"\bon\s+se\s+(?:retrouve|parle)\s+(?:demain|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche)\b[^.]{0,40}\bpas\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche)\b"
+    r"|"
+    # A later clause still proposes after a skip: "on zappe demain, on se voit jeudi".
+    r"\bon\s+(?:zappe|saute)\b[^.]{0,60}\bon\s+se\s+(?:voit|retrouve|cale)\s+"
+    r"(?:demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b"
+    r"|"
+    r"\b(?:ça|ca)\s+marche\s+pour\s+(?:un|une|le|la)\s+"
+    r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
+    r"|"
+    r"\bpartant\s+pour\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|"
+    r"jeudi|vendredi|samedi|dimanche)\b"
+    r"|"
+    r"^\s*[àa]\s+(?:demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|"
+    r"dimanche)\s+pour\s+(?:le|la|un|une)\s+"
+    r"(?:point|r[eé]union|call|visio|cr[eé]neau)\b",
     re.I,
 )
 
@@ -1016,7 +1149,13 @@ def has_scheduling_proposal(text):
         r"|\bdoing\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|"
         r"thursday|friday|saturday|sunday|next|\d)\b"
         r"|\b(?:scheduling|booking|meeting|rescheduling|moving|canceling)\s+(?:a|an|the)\b"
-        r"|\b(?:schedule|book|meet|reschedule|move|cancel)\s+(?:a|an|the|our|my)\b",
+        r"|\b(?:schedule|book|meet|reschedule|move|cancel)\s+(?:a|an|the|our|my)\b"
+        r"|\b(?:we|i)\s+(?:debrief|convene)\b"
+        r"|\b(?:we|i)\s+follow\s+up\b"
+        r"|\b(?:we|i)\s+check\s+in\b(?!\s+(?:the|a|an)\b)"
+        r"|\b(?:we|i)\s+get\s+together\b"
+        r"|\b(?:we|i)\s+sit\s+down\b"
+        r"|\b(?:we|i)\s+jump\s+on\s+(?:a\s+)?(?:call|meeting|sync)\b",
         re.I
     )
     return bool(proposal_pattern.search(text_after))
@@ -1037,6 +1176,7 @@ def has_request_phrase(text):
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
         OBLIGATION_REQUEST,
+        WHO_CAN_SCHEDULE,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
         FRENCH_PROPOSAL,
@@ -1215,7 +1355,11 @@ def looks_like_request(doc, text):
     # "Does Thursday work for a call?" is a question whose root is "do",
     # not an imperative. Emphatic "Do remind me" has root "remind".
     if root.pos_ == "VERB" and not has_subject(doc):
-        if not (root.lemma_.lower() == "do" and "?" in text):
+        if root.lemma_.lower() == "do" and "?" in text:
+            pass
+        elif root.lemma_.lower() in ATTITUDE_LEMMAS and not ATTITUDE_SCHEDULE.search(text):
+            pass
+        else:
             return True
 
     # "Book conference room B", "Snooze the reminder" — spaCy drops the verb.
@@ -1291,7 +1435,7 @@ COPULAR_TIME_QUESTION = re.compile(
 def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
-    if RHETORICAL_PROPOSAL.search(text):
+    if RHETORICAL_PROPOSAL.search(text) or WHO_CAN_SCHEDULE.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
