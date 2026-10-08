@@ -273,6 +273,98 @@ class LocaleResolutionTests(unittest.TestCase):
         parsed.assert_not_called()
         nlp.assert_not_called()
 
+    def test_region_order_marks_and_non_language_tags(self):
+        # The first subtag is the region. A script after a real region is kept;
+        # a script or unknown code before the region is not.
+        kept = {
+            "en_US_": "en_US",
+            "en_US_Latn": "en_US",
+            "en_US_XX": "en_US",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en_US+",
+            "en*",
+            "en_US!",
+            "en_US！",
+            "en\u2215US",
+            "en\u2044US",
+            "en_C",
+            "en_US@latin",
+            "en_\ufeffUS",
+            "en_US\U0001f600",
+            "en_\nUS",
+            "en_\tUS",
+            "\u2000en_BW",
+            "en_BW",
+            "en_XX_US",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "+en_US",
+            "+EN_US",
+            '"en_US"',
+            "'en_US'",
+            "*en",
+            "(en)",
+            b"en_US",
+            0.0,
+            "C",
+            "c",
+            "POSIX",
+            "C.UTF-8",
+            "i-enochian",
+            "art",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_keeps_a_region_before_a_script_and_rejects_posix(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en_US_Latn",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en_US+",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("POSIX", "C.UTF-8", "+en_US", b"en_US"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
     def test_analyze_maps_an_unknown_english_region_to_en_gb(self):
         with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
             result = analyze(

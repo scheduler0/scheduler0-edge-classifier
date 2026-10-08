@@ -62,6 +62,14 @@ class ApiTests(unittest.TestCase):
             "\ufeffen_US",
             "\u00a0fr\u00a0",
             "fr\ufeff",
+            "+en_US",
+            "POSIX",
+            "C.UTF-8",
+            '"en_US"',
+            "*en",
+            "(en)",
+            "art",
+            "i-enochian",
         ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(
@@ -83,7 +91,17 @@ class ApiTests(unittest.TestCase):
                 parsed.assert_not_called()
 
     def test_analyze_endpoint_accepts_each_english_region_spelling(self):
-        for locale in ("en_US", "en-gb", "en_IE", None, "en_UK", "\u3000en_IE\u3000"):
+        for locale in (
+            "en_US",
+            "en-gb",
+            "en_IE",
+            None,
+            "en_UK",
+            "\u3000en_IE\u3000",
+            "en_US_Latn",
+            "en_US_",
+            "en_US+",
+        ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(
                     messages=[
