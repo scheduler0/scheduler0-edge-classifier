@@ -428,7 +428,13 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Pause the daily reminder" / "shelve Friday's review" withdraw a slot.
+    # "Pause the music" and "shelve the books" do not name a calendar object.
+    r"\b(?:pause|shelve)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?|"
+    r"bookings?)\b",
     re.I,
 )
 
@@ -686,6 +692,7 @@ FRENCH_PROPOSAL = re.compile(
     # "On se parle demain ?" proposes a call. Without "?" it is a statement.
     r"|\bon\s+se\s+parle\b[^?\n]{0,80}\?"
     r"|\bon\s+s['’]appelle\b[^?\n]{0,80}\?"
+    r"|\bon\s+se\s+pose\b[^?\n]{0,80}\?"
     r"|\bon\s+doit\s+se\s+(?:voir|rencontrer|caler|parler|retrouver)\b",
     re.I,
 )
@@ -741,6 +748,48 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     re.I,
 )
 
+# Plural imperatives, day offers, and slot fragments the polite list misses.
+# A meeting noun or weekday keeps "faisons le gâteau" and "go pour le gym" out.
+_FR_DAY = (
+    r"demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche"
+)
+_FR_MEET = (
+    r"point|call|visio|r[eé]union|cr[eé]neau|cr[eé]neaux|rappel"
+)
+FRENCH_SLOT_OFFER = re.compile(
+    r"\bfaisons\s+le\s+point\b"
+    r"|\b(?:voyons-nous|retrouvons-nous|r[eé]unissons-nous)\b"
+    r"|\bplanifions\s+(?:"
+    + _FR_DAY
+    + r"|un\s+point|le\s+point|la\s+r[eé]union|un\s+cr[eé]neau)\b"
+    r"|\bbloquons\s+(?:"
+    + _FR_DAY
+    + r"|un\s+cr[eé]neau|le\s+cr[eé]neau|ça|ca)\b"
+    r"|\b(?:d[eé]calons|reportons|avan[cç]ons)\s+"
+    r"(?:la\s+r[eé]union|le\s+point|le\s+cr[eé]neau|la\s+visio|le\s+call|[àa])\b"
+    r"|(?:^|[,:;]\s*)(?:un\s+|une\s+|le\s+|la\s+)?"
+    r"(?:point|visio|call|cr[eé]neau)\b[^?\n]{0,40}\?"
+    r"|\b(?:go|banco)\s+pour\s+(?:un\s+(?:point|call|cr[eé]neau)|"
+    r"une\s+(?:visio|r[eé]union)|le\s+point|la\s+r[eé]union|"
+    + _FR_DAY
+    + r"|\d)\b"
+    r"|\bje\s+suis\s+pour\s+(?:un\s+(?:point|call|cr[eé]neau)|"
+    r"une\s+(?:visio|r[eé]union)|le\s+point|"
+    + _FR_DAY
+    + r")\b"
+    r"|\b(?:te|vous)\s+va\b[^?\n]{0,50}\b(?:"
+    + _FR_MEET
+    + r")\b[^?\n]*\?"
+    r"|\b(?:ça|ca|ce)\s+(?:te|vous)\s+convient\b.{0,50}\b(?:"
+    + _FR_MEET
+    + r")\b"
+    r"|\b(?:trouve(?:z)?(?:-moi)?|ouvre(?:z)?(?:-moi)?|lib[eè]re(?:z)?(?:-moi)?)\b"
+    r".{0,40}\b(?:"
+    + _FR_MEET
+    + r")\b",
+    re.I,
+)
+
 # "Tu dois me rappeler" / "Faut me rappeler" direct the listener to schedule.
 # "Tu dois partir demain" has no scheduling verb and stays a statement.
 FRENCH_OBLIGATION = re.compile(
@@ -779,13 +828,15 @@ FRENCH_NEGATED_IMPERATIVE = re.compile(
 # "fais-moi" / "mets" / "note" are requests only next to a scheduling noun.
 # Bare "Mets la table demain" is not one.
 FRENCH_LIGHT_IMPERATIVE = re.compile(
-    r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|note(?:z)?(?!\s+que\b))\b",
+    r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|passe(?:z)?|"
+    r"note(?:z)?(?!\s+que\b))\b",
     re.I,
 )
 
 FRENCH_SCHEDULE_NOUN = re.compile(
     r"\b(?:rappels?|rendez-vous|r[eé]unions?|calendrier|notifications?|"
-    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?)\b",
+    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?|"
+    r"(?:un|le)\s+points?|(?:une|la)\s+visio|calls?)\b",
     re.I,
 )
 
@@ -1022,6 +1073,45 @@ def has_scheduling_proposal(text):
     return bool(proposal_pattern.search(text_after))
 
 
+# "We should grab time", "I'll take Thursday", "any slot for a sync",
+# "I'm thinking Thursday for the call", and "dial in" name a slot.
+# "Grab lunch", "I'll take tomorrow off", "any slot for pizza", and
+# "I dial in every Monday" do not.
+_SLOT_TIME = (
+    r"tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d"
+)
+_SLOT_EVENT = r"calls?|meetings?|syncs?|chats?|standups?|reviews?|appointments?"
+SLOT_OFFER = re.compile(
+    r"\b(?:we|i)\s+(?:should|could|can|shall|must|ought\s+to|have\s+to)\s+"
+    r"grab\s+(?:(?:some|a)\s+)?(?:time|slot)\b"
+    r"|"
+    r"(?:^|[,:;]\s*)grab\s+(?:(?:some|a)\s+)?time\b"
+    r"|"
+    r"(?:^|[,:;]\s*)grab\s+a\s+slot\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+take\s+"
+    rf"(?:{_SLOT_TIME})\b(?!\s+off\b)"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+take\s+(?:the\s+)?(?:\w+\s+){0,2}"
+    r"(?:call|meeting|sync|slot|review|appointment)\b"
+    r"|"
+    r"\b(?:any|a)\s+(?:slot|window|opening)\b.{0,50}\b"
+    rf"(?:{_SLOT_EVENT})\b"
+    r"|"
+    r"\bis\s+there\s+(?:a|any)\s+(?:slot|window|opening)\b.{0,60}\b"
+    rf"(?:{_SLOT_EVENT})\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+thinking\s+(?:about\s+)?"
+    rf"(?:{_SLOT_TIME})\b.{{0,40}}\b(?:{_SLOT_EVENT})\b"
+    r"|"
+    r"(?:^|[,:;]\s*)dial\s+in\b"
+    r"|"
+    r"\b(?:we|i)\s+should\s+dial\s+in\b",
+    re.I,
+)
+
+
 def has_request_phrase(text):
     patterns = (
         REQUEST_STARTERS,
@@ -1029,6 +1119,7 @@ def has_request_phrase(text):
         QUESTION_REQUEST,
         INDEFINITE_REQUEST,
         GROUP_PROPOSAL,
+        SLOT_OFFER,
         NEED_TO_SCHEDULE,
         HEDGED_PROPOSAL,
         RHETORICAL_PROPOSAL,
@@ -1428,6 +1519,7 @@ def looks_like_french_request(text, doc):
         or FRENCH_IMPERATIVE.search(text)
         or FRENCH_PROPOSAL.search(text)
         or FRENCH_SOFT_PROPOSAL.search(text)
+        or FRENCH_SLOT_OFFER.search(text)
         or FRENCH_CANCEL_REQUEST.search(text)
         or FRENCH_REMEMBER.search(text)
         or FRENCH_NEGATED_IMPERATIVE.search(text)

@@ -66,7 +66,14 @@ Its implementation uses these imperfect heuristics:
   scrap / kill / drop the meeting, bare "forget the meeting", "no meetings",
   and "skip Friday" clarify. "Drop me a reminder" stays a request.
   "Remind me what/when/where" is informational. "Could ya" counts as "could you".
-  "We should sync" is a meeting unless sync takes an object. "It'd be great to
+  "We should sync" is a meeting unless sync takes an object. "We should
+  grab time" / "grab a slot", sentence-initial "grab time", "I'll take
+  Thursday" (not "I'll take tomorrow off" or "I'll take the lasagna"),
+  "any slot for a sync", "is there a window for a call", "I'm thinking
+  Thursday for the call", and "dial in" are requests. "Grab lunch",
+  "any slot for pizza", "is there a window tomorrow", and "I dial in
+  every Monday" are not. "Pause" / "shelve" plus a reminder, review, or
+  meeting clarifies. "It'd be great to
   meet", "I'm gonna need a reminder", "the team should meet", and "I'd like us
   to meet" are requests. "Send volumes grow" is a headline, not a command.
   "skip" / "avoid" / "refrain from" plus a meeting, reminder, or emailing
@@ -86,7 +93,14 @@ Its implementation uses these imperfect heuristics:
   "on se fait un point ... ?", "on se fait une visio ... ?",
   "pourrait-on se voir", "on peut se voir", "si on se voyait",
   "ce serait bien de se voir", "je préférerais qu'on se voie",
-  "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
+  "chaud pour un point", "faisons le point", "voyons-nous", "bloquons demain",
+  "planifions demain", "décalons la réunion", "un point demain ?",
+  "visio demain ?", "go pour jeudi", "banco pour jeudi",
+  "je suis pour un point", "jeudi te va pour le point ?",
+  "ça te convient pour un point", "trouve-moi un créneau",
+  "libère-moi demain pour le point", "on se pose demain ?",
+  "mets ça pour le point", "passe la réunion",
+  "tu me rappelles ... ?", "faut se voir",
   "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
   "Pourquoi ne pas" is not a cancellation and not an informational question.
   "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
