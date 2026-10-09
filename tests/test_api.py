@@ -100,6 +100,53 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
                 self.assertEqual([], result["warnings"])
 
+    def test_analyze_endpoint_rejects_grandfathered_and_marked_locales(self):
+        for locale in (
+            "i-klingon",
+            "zh-min-nan",
+            "art-lojban",
+            "sgn-US",
+            "x-en",
+            "fr²",
+            "ja－JP",
+        ):
+            with self.subTest(locale=locale):
+                request = AnalyzeRequest(
+                    messages=[
+                        SuggestionMessage(
+                            speaker="Victor",
+                            timestamp="2026-07-17T10:00:00-04:00",
+                            message="I'll send the proposal tomorrow.",
+                        )
+                    ],
+                    options=SuggestionOptions(locale=locale),
+                )
+                with patch("suggestions.duckling_parse") as parsed:
+                    with self.assertRaises(HTTPException) as ctx:
+                        analyze_suggestions(request)
+                self.assertEqual(400, ctx.exception.status_code)
+                self.assertEqual("UNSUPPORTED_LOCALE", ctx.exception.detail["code"])
+                self.assertIn(locale, ctx.exception.detail["message"])
+                parsed.assert_not_called()
+
+    def test_analyze_endpoint_accepts_oed_and_a_trailing_hyphen(self):
+        for locale in ("en_GB_oed", "en_US-", "en-scouse"):
+            with self.subTest(locale=locale):
+                request = AnalyzeRequest(
+                    messages=[
+                        SuggestionMessage(
+                            speaker="Victor",
+                            timestamp="2026-07-17T10:00:00-04:00",
+                            message="I'll send the proposal tomorrow.",
+                        )
+                    ],
+                    options=SuggestionOptions(locale=locale),
+                )
+                with patch("suggestions.duckling_parse", return_value=TIME_ENTITY):
+                    result = analyze_suggestions(request)
+                self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+                self.assertEqual([], result["warnings"])
+
     def test_healthz_reports_ok_when_both_backends_respond(self):
         with patch("app.requests.post") as post:
             post.return_value.raise_for_status.return_value = None
