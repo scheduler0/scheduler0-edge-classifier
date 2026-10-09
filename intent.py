@@ -368,6 +368,57 @@ POLITE_INDIRECT = re.compile(
     re.I,
 )
 
+# "How does Thursday sound for a call?" / "Would Thursday be better for the
+# meeting?" fit a slot. "How does the weather sound?" and "better for the
+# laundry" do not name a meeting.
+SLOT_SOUND = re.compile(
+    r"\b(?:how\s+(?:does|do)|does|would)\b.{0,40}\bsound\b.{0,30}\bfor\s+"
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|standup|review)\b"
+    r"|"
+    r"\bsounds?\s+(?:good|ok|okay|alright|fine|right)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|standup|review)\b"
+    r"|"
+    r"\bwould\b.{0,40}\bbe\s+better\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|standup|review)\b",
+    re.I,
+)
+
+# "I wouldn't say no to a call" accepts. "I wouldn't say no to pizza" does not,
+# and the "no" must not cancel the ask. "I could go for a meeting" is the
+# same offer; "go for pizza" is not.
+WILLING_YES = re.compile(
+    r"\b(?:i\s+)?would(?:n't|\s+not)\s+say\s+no\s+to\s+"
+    r"(?:(?:a|an|the)\s+)?(?:call|meeting|sync|chat|reminder|standup)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\b(?:i\s+)?(?:could|can|would)\s+go\s+for\s+"
+    r"(?:(?:a|an|the)\s+)?(?:call|meeting|sync|chat|reminder)\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)",
+    re.I,
+)
+
+# "Video call tomorrow?" / "1:1 tomorrow?" propose a meeting only as a
+# question. "Hop on zoom" is a call; "tee up a call" schedules one.
+# "Tee up the printer" and "hop on a bus" do not match.
+MEETING_SHORTHAND = re.compile(
+    r"\bvideo\s+call\b[^?\n]{0,60}\?"
+    r"|"
+    r"\bhop\s+on\s+(?:a\s+)?zoom\b"
+    r"|"
+    r"\b(?:1:1|1-1|one-on-one|one\s+on\s+one)\b[^?\n]{0,40}\?"
+    r"|"
+    r"\btee\s+up\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|review|standup)\b",
+    re.I,
+)
+
+# "I'd like to get on your calendar Thursday" asks for a slot.
+# "I'd like to get on the bus" does not.
+GET_ON_CALENDAR = re.compile(
+    r"\bget(?:ting)?\s+on\s+(?:your|my|the|our)\s+calendar\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -428,7 +479,22 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Bail on Thursday's sync" / "unschedule the meeting" / "mute the
+    # reminder" withdraw a schedule. "Bail on the hike", "mute the TV",
+    # and "I'm out of the office" do not.
+    r"\b(?:bail\s+on|unschedule|take\s+me\s+off|count\s+me\s+out\s+of)\b"
+    r".{0,40}\b(?:meetings?|syncs?|calls?|standups?|reviews?|reminders?|"
+    r"appointments?)\b"
+    r"|"
+    r"\bwipe\b.{0,50}\bcalendar\b"
+    r"|"
+    r"\b(?:mute|turn\s+off)\b.{0,30}\b(?:reminders?|notifications?|digests?|"
+    r"alerts?)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+out\s+of\b.{0,40}\b"
+    r"(?:meetings?|syncs?|calls?|standups?|reviews?)\b",
     re.I,
 )
 
@@ -737,7 +803,30 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
-    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?"
+    r"|"
+    # "On table sur jeudi pour le point" / "top pour un point" name a meeting.
+    # "On table sur le gâteau" and "top pour le gâteau" do not.
+    r"\b(?:on\s+table|je\s+penche|on\s+vise|je\s+serais|on\s+partirait)\b"
+    r".{0,50}\b(?:points?|visios?|r[eé]unions?|calls?|cr[eé]neaux|rappels?)\b"
+    r"|"
+    r"\b(?:top|nickel)\s+pour\s+(?:un|une|le|la|l['’])\s*"
+    r"(?:point|visio|call|r[eé]union|cr[eé]neau)\b"
+    r"|"
+    r"\b(?:ça|ca)\s+roule\s+pour\s+(?:un|une|le|la|l['’])\s*"
+    r"(?:point|visio|call|r[eé]union|cr[eé]neau)\b"
+    r"|"
+    r"\bje\s+(?:te|vous)\s+prends\b.{0,50}\b"
+    r"(?:points?|visios?|r[eé]unions?|calls?|cr[eé]neaux|rappels?)\b"
+    r"|"
+    r"\bon\s+valide\b.{0,50}\b"
+    r"(?:points?|visios?|r[eé]unions?|calls?|cr[eé]neaux)\b"
+    r"|"
+    r"^\s*(?:un\s+)?(?:call|daily|stand-?up)\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+laisse\s+tomber\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|samedi|"
+    r"dimanche)\b.{0,40}\bon\s+se\s+voit\b",
     re.I,
 )
 
@@ -779,13 +868,17 @@ FRENCH_NEGATED_IMPERATIVE = re.compile(
 # "fais-moi" / "mets" / "note" are requests only next to a scheduling noun.
 # Bare "Mets la table demain" is not one.
 FRENCH_LIGHT_IMPERATIVE = re.compile(
-    r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|note(?:z)?(?!\s+que\b))\b",
+    r"(?:^|[,:;]\s*)(?:fais-moi|faites-moi|mets|mettez|note(?:z)?(?!\s+que\b)|"
+    r"pose(?:z)?-moi|inscris|inscrivez|agenda|agendez|"
+    r"replanifie(?:z)?|reprogramme(?:z)?|glisse(?:z)?-moi|"
+    r"balance(?:z)?|[eé]pingle(?:z)?|consigne(?:z)?)\b",
     re.I,
 )
 
 FRENCH_SCHEDULE_NOUN = re.compile(
     r"\b(?:rappels?|rendez-vous|r[eé]unions?|calendrier|notifications?|"
-    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?)\b",
+    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?|"
+    r"points?|visios?|invites?)\b",
     re.I,
 )
 
@@ -1036,6 +1129,10 @@ def has_request_phrase(text):
         DEADLINE_REQUEST,
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
+        SLOT_SOUND,
+        WILLING_YES,
+        MEETING_SHORTHAND,
+        GET_ON_CALENDAR,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1291,7 +1388,7 @@ COPULAR_TIME_QUESTION = re.compile(
 def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
-    if RHETORICAL_PROPOSAL.search(text):
+    if RHETORICAL_PROPOSAL.search(text) or SLOT_SOUND.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
@@ -1505,6 +1602,11 @@ def has_negation(text, doc):
         check_text_after_never_mind = WILLING_MIND.sub(
             " ", check_text_after_never_mind
         )
+    accepting = WILLING_YES.search(text)
+    if accepting:
+        check_text_after_never_mind = WILLING_YES.sub(
+            " ", check_text_after_never_mind
+        )
     if NEGATION_PATTERN.search(check_text_after_never_mind):
         return True
 
@@ -1542,6 +1644,8 @@ def has_negation(text, doc):
         ):
             continue
         if challenge and challenge.start() <= token.idx < challenge.end():
+            continue
+        if accepting and accepting.start() <= token.idx < accepting.end():
             continue
         if willing and willing.start() <= token.idx < willing.end():
             continue
