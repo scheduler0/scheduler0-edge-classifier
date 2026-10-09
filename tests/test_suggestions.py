@@ -284,6 +284,86 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_grandfathered_tags_marks_and_trailing_hyphens(self):
+        # A trailing hyphen becomes an empty segment and the known region stays.
+        # The historical "oed" variant keeps the region tag in front of it.
+        kept = {
+            "en_US-": "en_US",
+            "en-GB-": "en_GB",
+            "en_GB_oed": "en_GB",
+            "en-GB-oed": "en_GB",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        # Grandfathered English tags, numeric regions, and separators Duckling
+        # does not treat as a region delimiter fall back to en_GB.
+        for raw in (
+            "en-scouse",
+            "en-boont",
+            "en_840",
+            "enUS",
+            "eng_US",
+            "en-x-twain",
+            "en_US,",
+            "en_US;",
+            "en=US",
+            "en|US",
+            "en~US",
+            "en_Dsrt_US",
+            "en²",
+            "en_US²",
+            "en_US·",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "x-en",
+            "i-klingon",
+            "zh-min",
+            "zh-min-nan",
+            "art-lojban",
+            "sgn-US",
+            "fr²",
+            "fr·FR",
+            "es−ES",
+            "de⁄DE",
+            "ja－JP",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_keeps_a_trailing_hyphen_region_and_rejects_klingon(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en_US-",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse") as parsed:
+            with patch("suggestions.nlp") as nlp:
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    analyze(
+                        _request(
+                            [_msg("I'll send you the proposal tomorrow.")],
+                            locale="i-klingon",
+                        )
+                    )
+        self.assertEqual("i-klingon", ctx.exception.locale)
+        parsed.assert_not_called()
+        nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
