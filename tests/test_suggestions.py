@@ -284,6 +284,154 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_oxendict_hyphens_and_nonspacing_locale_edges(self):
+        # Repeated hyphens collapse to separators, so the region still wins.
+        # A dot, at-sign, or unknown region does not.
+        kept = {
+            "en_GB_oxendict": "en_GB",
+            "en-GB-oxendict": "en_GB",
+            "  en_GB_oxendict  ": "en_GB",
+            "en--US": "en_US",
+            "EN--us": "en_US",
+            "en---US": "en_US",
+            "en----IE": "en_IE",
+            "EN---za": "en_ZA",
+            "en_CA_u_ca_gregory": "en_CA",
+            "en-US-u-fw-mon": "en_US",
+            "en_IN_u_tz_ist": "en_IN",
+            "en_ZA_AU": "en_ZA",
+            "en_PH_US": "en_PH",
+            "en_TT_JM": "en_TT",
+            "En_Nz": "en_NZ",
+            "en_US_#Latn": "en_US",
+            "en_JM_x_privateuse": "en_JM",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en_US.ISO8859-15",
+            "en_NZ.utf8",
+            "en_CA.ISO8859-1",
+            "en_IE@euro",
+            "en_ZA@euro",
+            "en--",
+            "en_CY",
+            "en_GI",
+            "en_PR",
+            "en_ZW",
+            "en\u2800_US",
+            "en_US\u2800",
+            "en_US\u3164",
+            "en\u3164_US",
+            "en_US°",
+            "en_US§",
+            "en_US]",
+            "en_US[",
+            "en_US}",
+            "en_US{",
+            "en_US&",
+            "en_US^",
+            "en_US%",
+            "en_US$",
+            "en_AU/",
+            "en_NZ?",
+            "en_CA:",
+            "en-Shaw",
+            "en-Brai",
+            "en-Fonipa",
+            "en_BZ.UTF-8",
+            "en_TT.utf-8",
+            "en_PH.iso88591",
+            "en_US\u266a",
+            "en\u266a_US",
+            "en_GB\u00a4",
+            "en_GB.oxendict",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u2800en_JM\u2800",
+            "\u3164en",
+            "\u266aen",
+            "i-lux",
+            "i-mingo",
+            "i-ami",
+            "i-hak",
+            "i-tsu",
+            "i-tay",
+            "i-tao",
+            "i-pwn",
+            "i-bnn",
+            "zh-guoyu",
+            "zh-hakka",
+            "zh-xiang",
+            "sgn-BE-FR",
+            "sgn-BE-NL",
+            "cel-gaulish",
+            "art-x-tokipona",
+            "fr_FR.UTF-8",
+            "de_DE.UTF-8",
+            "zh_CN.GB2312",
+            "ja_JP.eucJP",
+            "no_NO",
+            "nb_NO",
+            "nn_NO",
+            "fil",
+            "tl_PH",
+            "iw",
+            "in",
+            "ji",
+            "mo",
+            "sh",
+            "sr_RS",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_keeps_a_repeated_hyphen_region_and_rejects_braille(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en--US",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-Shaw",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("\u2800en_JM\u2800", "i-ami"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
