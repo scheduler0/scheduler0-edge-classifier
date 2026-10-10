@@ -79,6 +79,59 @@ GROUP_PROPOSAL = re.compile(
     re.I,
 )
 
+# "We should talk/connect/pair Thursday" is a meeting. An object or "about"
+# ("connect the cables", "pair the socks", "talk about the budget") is not.
+# "find time" / "find a slot" is a meeting; "find the keys" is not.
+_MEETING_MODAL = (
+    r"(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta|need\s+to)"
+)
+_NOT_MEETING_OBJECT = r"(?!\s+(?:about|the|a|an|our|my|your|his|her|their|it|to)\b)"
+COLLOQUIAL_MEETING = re.compile(
+    r"\bwe\s+" + _MEETING_MODAL + r"\s+(?:talk|connect|pair)\b" + _NOT_MEETING_OBJECT
+    + r"|"
+    r"\bwe\s+" + _MEETING_MODAL + r"\s+link\s+up\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    + r"|"
+    r"\bwe\s+" + _MEETING_MODAL + r"\s+find\s+(?:a\s+)?(?:time|slot)\b"
+    + r"|"
+    # "the group should sync" matches "meet" above only for meet, not sync.
+    r"\b(?:the\s+)?(?:team|group|crew)\s+"
+    r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
+    r"sync(?:\s+up)?\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    + r"|"
+    r"\b(?:someone|somebody)\s+should\s+sync(?:\s+up)?\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    + r"|"
+    r"\bi(?:['’]d|\s+would)\s+like\s+to\s+talk\b" + _NOT_MEETING_OBJECT
+    + r"|"
+    r"\bi\s+(?:could|can)\s+swing\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    + r"|"
+    r"\bi\s+(?:could|can)\s+swing\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b.{0,40}\b(?:call|meeting|sync|chat)\b"
+    + r"|"
+    # "I'll hold Thursday for the review" books a slot. "I'll hold the door" does not.
+    r"\bi(?:['’]ll|\s+will)\s+hold\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b.{0,40}\b(?:call|meeting|sync|review|standup)\b"
+    + r"|"
+    r"\bi(?:['’]m|\s+am)\s+partial\s+to\b.{0,50}\b(?:call|meeting|sync|standup)\b"
+    + r"|"
+    r"\bmy\s+preference\s+is\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    + r"|"
+    r"\bgets\s+my\s+vote\s+for\s+(?:the\s+)?(?:call|meeting|sync|chat)\b"
+    + r"|"
+    r"\bi(?:['’]m|\s+am)\s+angling\s+for\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
+    + r"|"
+    r"(?:^|[,:;]\s*)earmark\b.{0,50}\b(?:review|sync|call|meeting|standup)\b"
+    + r"|"
+    r"(?:^|[,:;]\s*)block(?:\s+off)?\s+"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next|\d)\b.{0,40}\b(?:review|sync|call|meeting|standup)\b",
+    re.I,
+)
+
 # "We need to meet", "I need to be reminded", "the team needs a meeting".
 # Kept on scheduling verbs so "I need to leave every Monday" stays a statement.
 NEED_TO_SCHEDULE = re.compile(
@@ -117,6 +170,10 @@ NEED_TO_SCHEDULE = re.compile(
 HEDGED_PROPOSAL = re.compile(
     r"\b(?:wondering|hoping)\b.{0,50}\b(?:we|you|i)\s+(?:could|can|would)\s+"
     r"(?:meet|schedule|book|remind|reschedule|sync)\b"
+    r"|"
+    # "hoping we can do a call" names the meeting. "do the laundry" does not.
+    r"\b(?:wondering|hoping)\b.{0,50}\b(?:we|you|i)\s+(?:could|can|would)\s+"
+    r"do\s+(?:a|an|the)\s+(?:call|meeting|sync|chat)\b"
     r"|"
     r"\b(?:wondering|hoping)\b.{0,40}\bfor\s+(?:a|an|the)\s+"
     r"(?:meeting|call|sync|reminder)\b"
@@ -741,6 +798,41 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     re.I,
 )
 
+# "Marque jeudi pour le point" / "Je bloque jeudi pour le point" book a slot.
+# A page, a door, a cake, or a dog is not the meeting.
+_FRENCH_MEETING_NOUN = (
+    r"(?:points?|r[eé]unions?|visios?|calls?|cr[eé]neaux?|rappels?)"
+)
+FRENCH_SLOT_BOOKING = re.compile(
+    r"(?:^|[,:;]\s*)marque(?:z)?\b.{0,40}\b" + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"(?:^|[,:;]\s*)invite(?:z)?-moi\b.{0,40}\b" + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"\bje\s+(?:te\s+|vous\s+)?(?:bloque|r[eé]serve)\b.{0,50}\b"
+    + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"\bje\s+peux\b.{0,40}\bpour\s+(?:le|la|un|une)\s+" + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"(?:^|\bje\s+suis\s+)ok\b.{0,40}\b" + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"\bon\s+se\s+calerait\b"
+    r"(?!\s+(?:un|une|le|la|les)\s+(?!" + _FRENCH_MEETING_NOUN + r"\b))"
+    r"[^?\n]*\?"
+    + r"|"
+    r"\bon\s+discute\b.{0,40}\b" + _FRENCH_MEETING_NOUN + r"\b[^?\n]*\?"
+    + r"|"
+    r"\bon\s+se\s+fait\s+ça\b.{0,50}\b" + _FRENCH_MEETING_NOUN + r"\b[^?\n]*\?"
+    + r"|"
+    r"\b(?:tu|vous)\s+me\s+notes?\b.{0,40}\b" + _FRENCH_MEETING_NOUN + r"\b"
+    + r"|"
+    r"(?:^|[,:;]\s*)garde-moi\s+(?:un|une|le|la)\s+"
+    r"(?:cr[eé]neau|point|call|r[eé]union|visio|rappel)\b"
+    + r"|"
+    r"\b(?:tu|vous)\s+me\s+gardes?\s+(?:un|une|le|la)\s+"
+    r"(?:cr[eé]neau|point|call|r[eé]union|visio|rappel)\b[^?\n]*\?",
+    re.I,
+)
+
 # "Tu dois me rappeler" / "Faut me rappeler" direct the listener to schedule.
 # "Tu dois partir demain" has no scheduling verb and stays a statement.
 FRENCH_OBLIGATION = re.compile(
@@ -1029,6 +1121,7 @@ def has_request_phrase(text):
         QUESTION_REQUEST,
         INDEFINITE_REQUEST,
         GROUP_PROPOSAL,
+        COLLOQUIAL_MEETING,
         NEED_TO_SCHEDULE,
         HEDGED_PROPOSAL,
         RHETORICAL_PROPOSAL,
@@ -1428,6 +1521,7 @@ def looks_like_french_request(text, doc):
         or FRENCH_IMPERATIVE.search(text)
         or FRENCH_PROPOSAL.search(text)
         or FRENCH_SOFT_PROPOSAL.search(text)
+        or FRENCH_SLOT_BOOKING.search(text)
         or FRENCH_CANCEL_REQUEST.search(text)
         or FRENCH_REMEMBER.search(text)
         or FRENCH_NEGATED_IMPERATIVE.search(text)
