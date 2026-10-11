@@ -66,7 +66,13 @@ Its implementation uses these imperfect heuristics:
   scrap / kill / drop the meeting, bare "forget the meeting", "no meetings",
   and "skip Friday" clarify. "Drop me a reminder" stays a request.
   "Remind me what/when/where" is informational. "Could ya" counts as "could you".
-  "We should sync" is a meeting unless sync takes an object. "It'd be great to
+  "We should sync" is a meeting unless sync takes an object. "We should
+  chat" and "we should confer" are meetings unless they take an object or
+  "about". "Okay/alright/fine for a call", "how would Thursday work/look
+  for a sync", "around for a call", "I'm a go for the call", "got 15
+  minutes for a sync", and "circle Thursday for the review" are slot
+  offers. "Okay for pizza", "around the office", and "15 dollars" are not.
+  "It'd be great to
   meet", "I'm gonna need a reminder", "the team should meet", and "I'd like us
   to meet" are requests. "Send volumes grow" is a headline, not a command.
   "skip" / "avoid" / "refrain from" plus a meeting, reminder, or emailing
@@ -87,7 +93,11 @@ Its implementation uses these imperfect heuristics:
   "pourrait-on se voir", "on peut se voir", "si on se voyait",
   "ce serait bien de se voir", "je préférerais qu'on se voie",
   "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
-  "on se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
+  "on se téléphone ... ?", "on se rappelle ... ?" (not "on se rappelle le film"),
+  "prévois ... point", "que dirais-tu ... point", "on se fixe ... point ?",
+  "on verrouille ... point", "et si jeudi pour le point", "booke-moi ... point",
+  and "on se donne ... point ?". "Je me désiste du point" and "on raye le point"
+  clarify. "On se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
   "Pourquoi ne pas" is not a cancellation and not an informational question.
   "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
   without "?" are not requests. "Pourquoi on se voit ?" and "c'est quand" are
