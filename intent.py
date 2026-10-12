@@ -368,6 +368,49 @@ POLITE_INDIRECT = re.compile(
     re.I,
 )
 
+# "Is Thursday doable for a call?" / "I'm open Thursday for a sync" offer a
+# slot. "Doable for the laundry", "open for lunch", and "the door is open"
+# do not.
+_SLOT_NOUN = (
+    r"(?:call|meeting|sync|chat|appointment|review|standup)"
+)
+SLOT_FIT = re.compile(
+    r"\b(?:doable|workable|viable|feasible)\s+for\s+(?:a|an|the)\s+"
+    + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bopen\s+for\s+(?:a|an|the)\s+" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\b(?:i(?:['’]m|\s+am)|we(?:['’]re|\s+are)|you(?:['’]re|\s+are)?)\s+"
+    r"open\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday|next|\d)\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    + _SLOT_NOUN + r"\b",
+    re.I,
+)
+
+# "I nominate Thursday for the call" / "my pick is Thursday for the sync" /
+# "I'm sold on Thursday for the call" name a slot. Pizza and the sofa do not.
+SLOT_NOMINATION = re.compile(
+    r"\bi\s+nominate\b.{0,50}\bfor\s+(?:a|an|the)\s+" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bmy\s+pick\s+is\b.{0,40}\b" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bmy\s+pick\s+for\s+(?:a|an|the)\s+" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+sold\s+on\b.{0,50}\bfor\s+(?:a|an|the)\s+"
+    + _SLOT_NOUN + r"\b",
+    re.I,
+)
+
+# "Buzz me Thursday" and "Flag Thursday for the review" are asks spaCy
+# mistags as names. "Buzz the intercom" and "flag the email" are not.
+BUZZ_OR_FLAG = re.compile(
+    r"(?:^|[,:;]\s*)buzz\s+me\b"
+    r"|"
+    r"(?:^|[,:;]\s*)flag\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:review|sync|call|meeting|standup)\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -428,7 +471,15 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Ditch the Thursday call" / "opt out of the digest" withdraw a
+    # schedule. "Ditch the picnic" and "drop out of the race" do not.
+    r"\bditch\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?)\b"
+    r"|"
+    r"\b(?:opt\s+out\s+of|drop\s+out\s+of|backing\s+out\s+of)\b.{0,50}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?)\b",
     re.I,
 )
 
@@ -690,6 +741,12 @@ FRENCH_PROPOSAL = re.compile(
     re.I,
 )
 
+# Meeting nouns shared by soft proposals and light imperatives.
+_FR_SLOT = (
+    r"(?:points?|visios?|calls?|agendas?|rappels?|rendez-vous|"
+    r"r[eé]unions?|cr[eé]neaux?|notifications?|alarmes?)"
+)
+
 # Soft French proposals the imperative/polite lists miss.
 FRENCH_SOFT_PROPOSAL = re.compile(
     r"\bserait-il\s+possible\s+de\s+(?:se\s+voir|se\s+retrouver|"
@@ -737,7 +794,27 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
-    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?"
+    r"|"
+    # "Compte-moi pour le point" / "nickel pour un point" / "on est bon
+    # pour un point" accept a slot. The cake and the race do not.
+    r"\bcompte(?:z)?-moi\b.{0,50}\b" + _FR_SLOT + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)inscris(?:-moi|-nous)?\b.{0,50}\b" + _FR_SLOT + r"\b"
+    r"|"
+    r"\b(?:nickel|impec)\s+pour\s+(?:un|une|le|la|l['’])\s*" + _FR_SLOT + r"\b"
+    r"|"
+    r"\bon\s+est\s+bons?\s+pour\s+(?:un|une|le|la)\s+" + _FR_SLOT + r"\b"
+    r"|"
+    # "On rapproche le point" / "on éloigne la réunion" move a meeting.
+    r"\bon\s+(?:rapproche|éloigne)\b.{0,40}\b" + _FR_SLOT + r"\b"
+    r"|"
+    # "Zoom jeudi ?" / "Rétro jeudi à 16h ?" / "Visio jeudi ?" propose a
+    # call. Without "?" or with a non-meeting object, they do not.
+    r"(?:^|[,:;]\s*)(?:zoom|r[eé]tro|visio)\b"
+    r"(?![^?\n]{0,50}\b(?:g[aâ]teau|gateau|course|film|match|chaise|"
+    r"voiture|tableau|sel|porte)\b)"
+    r"[^?\n]{0,50}\?",
     re.I,
 )
 
@@ -783,9 +860,10 @@ FRENCH_LIGHT_IMPERATIVE = re.compile(
     re.I,
 )
 
+# "le point" / "l'agenda" name a meeting for light imperatives
+# ("Note jeudi pour le point", "Mets jeudi dans l'agenda").
 FRENCH_SCHEDULE_NOUN = re.compile(
-    r"\b(?:rappels?|rendez-vous|r[eé]unions?|calendrier|notifications?|"
-    r"digest|compte-rendu|cr[eé]neaux|cr[eé]neau|alarmes?)\b",
+    r"\b(?:" + _FR_SLOT + r"|calendrier|digest|compte-rendu)\b",
     re.I,
 )
 
@@ -1036,6 +1114,9 @@ def has_request_phrase(text):
         DEADLINE_REQUEST,
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
+        SLOT_FIT,
+        SLOT_NOMINATION,
+        BUZZ_OR_FLAG,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1292,6 +1373,10 @@ def looks_like_info_question(text):
     # "Why don't we meet" and "what say we meet" are proposals, not questions
     # about an existing schedule. "Why do we meet" still falls through.
     if RHETORICAL_PROPOSAL.search(text):
+        return False
+    # "Is Thursday feasible for a review?" offers a slot. "Is Thursday
+    # doable?" and "Is Thursday open for lunch?" do not match SLOT_FIT.
+    if SLOT_FIT.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
