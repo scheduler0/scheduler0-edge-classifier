@@ -284,6 +284,128 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_invisible_marks_and_iso639_codes(self):
+        # Marks that strip() does not remove, and language codes that only
+        # look like English when they start with "en".
+        kept = {
+            "en-US-u-nu-arab": "en_US",
+            "en--GB": "en_GB",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "enm",
+            "ENM",
+            "  enm  ",
+            "eng_GB",
+            "en_US\u200f",
+            "en\u200f_US",
+            "en_\u200fUS",
+            "en_US\u2061",
+            "en\u2061_US",
+            "en_AU\u2061",
+            "en_US\u2062",
+            "en\u2063_GB",
+            "en_US\u2064",
+            "en_US\u206a",
+            "en\u206a_US",
+            "en_US\ufff9",
+            "en_US\ufffc",
+            "en_US\u070f",
+            "en_US\u180c",
+            "en\u180c_US",
+            "en_US\u180d",
+            "en_IE\u1363",
+            "en_US\u055e",
+            "en_CA\u301a",
+            "en_US\u2601",
+            "en_US\u115f",
+            "en\u1160_US",
+            "en_NZ\u17b4",
+            "en_PH\uffa0",
+            "en_US\ufe02",
+            "en\u0327_US",
+            "en_US@collation=phonebook",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u200fen_US",
+            "fr\u200f",
+            "\u200ffr",
+            "\u2061en",
+            "\u2064en_US",
+            "\u206aen",
+            "\ufff9en",
+            "\ufffcen_US",
+            "\u070fen",
+            "\u180cen_US",
+            "\u1363en",
+            "\u055een_GB",
+            "\u301ben",
+            "\u115fen",
+            "\uffa0en_US",
+            "\u17b4de",
+            "\ufe02en",
+            "ang",
+            "fra",
+            "fre",
+            "deu",
+            "cmn",
+            "yue",
+            "sgn-CH-DE",
+            "no-bok",
+            "no-nyn",
+            "sr-Latn-RS",
+            "zh-yue",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_nu_arab_and_rejects_iso639_before_parsing(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-nu-arab",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="enm",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("ang", "\u200fen", "\u2064en_US", "fra", "cmn"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
