@@ -284,6 +284,96 @@ class LocaleResolutionTests(unittest.TestCase):
         self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
         self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
 
+    def test_extension_subtags_numeric_regions_and_charset_names(self):
+        # Empty segments and Unicode extension keys still leave a real region.
+        # A dot, at-sign, or UN M.49 number does not.
+        kept = {
+            "en___US": "en_US",
+            "en_US__": "en_US",
+            "en__US__": "en_US",
+            "en----US": "en_US",
+            "  en___US  ": "en_US",
+            "EN___us": "en_US",
+            "en-US-u-hc-h23": "en_US",
+            "en_US_u_hc_h23": "en_US",
+            "en-CA-u-ms-metric": "en_CA",
+            "en_AU_u_lb_strict": "en_AU",
+            "en-GB-u-hc-h12": "en_GB",
+            "en_US_u_nu_deva": "en_US",
+            "en-IN-u-nu-deva": "en_IN",
+            "en_CA_x_x": "en_CA",
+            "en-US-x-lvariant": "en_US",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en_826",
+            "en_124",
+            "en_036",
+            "en_554",
+            "en_710",
+            "en_US@currency=USD",
+            "en_US.UTF-8@euro",
+            "en_GB.utf-8",
+            "en_US.utf-8",
+            "en_US\u0640",
+            "en\u0640_US",
+            "en_\u0640US",
+            "en_US\u09f3",
+            "en\u2150",
+            "en_US\u231a",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u0640en_US",
+            "\u231aen",
+            "fr_FR.ISO8859-1",
+            "es_ES.UTF-8",
+            "pt_BR.UTF-8",
+            "ru_RU.UTF-8",
+            "ar_SA.UTF-8",
+            "zh_TW.Big5",
+            "ko_KR.eucKR",
+            "th_TH.TIS-620",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_deva_digits_and_rejects_charset_names(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-IN-u-nu-deva",
+                )
+            )
+        self.assertEqual("en_IN", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
+        for locale in ("ru_RU.UTF-8", "\u0640en_US", "ko_KR.eucKR"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
