@@ -406,6 +406,105 @@ class LocaleResolutionTests(unittest.TestCase):
                 parsed.assert_not_called()
                 nlp.assert_not_called()
 
+    def test_calendar_script_and_charset_aliases_resolve_before_parsing(self):
+        for raw in (
+            "en-US-u-ca-buddhist",
+            "en-US-u-rg-gbzzzz",
+            "en-US-u-tz-usnyc",
+            "en_US_u_rg_uszzzz",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_US", resolve_duckling_locale(raw))
+
+        for raw in (
+            "en-021",
+            "en-029",
+            "en-053",
+            "en-054",
+            "en-057",
+            "en-061",
+            "en-202",
+            "en-Zyyy",
+            "en-Zzzz",
+            "en-Arab",
+            "en-Hebr",
+            "en-Thai",
+            "en-Hant",
+            "en_US.cp1252",
+            "en_US.1252",
+            "en_US@calendar=iso8601",
+            "English_United States.1252",
+            "en++US",
+            "en_US.",
+            "en_US@",
+            "en.US.UTF-8",
+            "en_US\u20a5",
+            "en\u2048",
+            "en\u2e18_US",
+            "en_\u212eUS",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u20a5en",
+            "\u2048en_US",
+            "zh-cmn",
+            "zh-cmn-Hans",
+            "zh-cmn-Hans-CN",
+            "it_IT.UTF-8",
+            "nl_BE.UTF-8",
+            "pl_PL.ISO8859-2",
+            "sv_SE.ISO8859-1",
+            "da_DK.ISO8859-1",
+            "ja_JP.PCK",
+            "ko_KR.UTF-8",
+            "fr_CA.UTF-8",
+            "pt_PT.UTF-8",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-ca-buddhist",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-021",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("zh-cmn", "\u20a5en", "ja_JP.PCK", "fr_CA.UTF-8"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
