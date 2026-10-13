@@ -75,7 +75,18 @@ GROUP_PROPOSAL = re.compile(
     r"|"
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+meet\b"
-    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    # "We should chat/confer Thursday" is a meeting. "Chat about the weather"
+    # and "confer the award" are not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:chat|confer)\b"
+    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:the\s+)?(?:team|group|crew)\s+"
+    r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
+    r"(?:chat|confer)\b"
+    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)",
     re.I,
 )
 
@@ -365,6 +376,33 @@ POLITE_INDIRECT = re.compile(
     r"\bclear\s+(?:my|the|our)\s+calendar\b"
     r"|"
     r"\bcircle\s+back\b",
+    re.I,
+)
+
+# "Would Thursday be okay for a call?" and "How would Thursday look for a
+# sync?" offer a slot. "Okay for pizza", "How would the weather look?",
+# and "I'm around the house" do not.
+SLOT_OKAY = re.compile(
+    r"\b(?:okay|ok|alright|fine)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bhow\s+would\b.{0,50}\b(?:work|look)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\b(?:are\s+you|you|i(?:['’]m|\s+am)|we(?:['’]re|\s+are))\s+around\b"
+    r".{0,50}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+a\s+go\s+for\b.{0,40}\b"
+    r"(?:call|meeting|sync|chat|standup|review)\b"
+    r"|"
+    r"\b(?:do\s+you\s+have|have\s+you\s+got|got)\s+"
+    r"(?:a\s+few|a\s+couple(?:\s+of)?|\d+)\s+(?:minutes|mins)\b.{0,50}\b"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    # "Circle Thursday for the review" books a slot. spaCy often misses the verb.
+    r"(?:^|[,:;]\s*)circle\b.{0,50}\bfor\s+(?:a|an|the)\s+"
+    r"(?:review|sync|call|meeting|standup)\b",
     re.I,
 )
 
@@ -686,8 +724,18 @@ FRENCH_PROPOSAL = re.compile(
     # "On se parle demain ?" proposes a call. Without "?" it is a statement.
     r"|\bon\s+se\s+parle\b[^?\n]{0,80}\?"
     r"|\bon\s+s['’]appelle\b[^?\n]{0,80}\?"
+    # "On se téléphone jeudi ?" is a call. Without "?" it is a statement.
+    # "On se rappelle le film ?" remembers something; it is not a call.
+    r"|\bon\s+se\s+t[eé]l[eé]phone\b[^?\n]{0,80}\?"
+    r"|\bon\s+se\s+rappelle\b(?!\s+(?:le|la|les|un|une|du|des|au|aux)\b)"
+    r"[^?\n]{0,80}\?"
     r"|\bon\s+doit\s+se\s+(?:voir|rencontrer|caler|parler|retrouver)\b",
     re.I,
+)
+
+# Meeting noun for slot-plan proposals ("le point", "un créneau").
+_FR_MEET_NOUN = (
+    r"(?:points?|visios?|r[eé]unions?|calls?|cr[eé]neaux?|rappels?)"
 )
 
 # Soft French proposals the imperative/polite lists miss.
@@ -737,7 +785,34 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"(?:point|call|r[eé]union|visio|cr[eé]neau)\b"
     r"|"
     r"\b(?:tu|vous)\s+(?:me|nous)\s+"
-    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?",
+    r"(?:rappelles|rappelez|pr[eé]viens|pr[eé]venez)\b[^?\n]{0,40}\?"
+    r"|"
+    # "Prévois jeudi pour le point" / "booke-moi ... point" / "et si jeudi
+    # pour le point" book a slot. "Prévois le gâteau" and "et si le gâteau" do not.
+    r"(?:^|[,:;]\s*)pr[eé]vois(?:-moi)?\b.{0,60}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:que\s+dirais-tu|qu['’]est-ce\s+que\s+tu\s+dirais)\b.{0,60}\b"
+    + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+se\s+fixe\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+verrouille\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bet\s+si\s+(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|"
+    r"vendredi|samedi|dimanche)\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bbooke(?:z)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
+    re.I,
+)
+
+# "Je me désiste du point" / "on raye le point" withdraw a meeting.
+# "Je me désiste de la course" and "on raye le tableau" do not.
+FRENCH_SLOT_WITHDRAW = re.compile(
+    r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
@@ -1036,6 +1111,7 @@ def has_request_phrase(text):
         DEADLINE_REQUEST,
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
+        SLOT_OKAY,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1293,6 +1369,10 @@ def looks_like_info_question(text):
     # about an existing schedule. "Why do we meet" still falls through.
     if RHETORICAL_PROPOSAL.search(text):
         return False
+    # "How would Thursday work for a call?" offers a slot. "Why is Thursday
+    # okay for a call?" still asks for a reason.
+    if SLOT_OKAY.search(text) and re.match(r"^\s*how\s+would\b", text, re.I):
+        return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
     if re.search(
@@ -1400,6 +1480,17 @@ def looks_like_french_info_question(text):
     # and "C'est quand la réunion ?" ask for information.
     if re.search(r"\bpourquoi\s+ne\s+pas\b", text, re.I):
         return False
+    # "Qu'est-ce que tu dirais d'un point jeudi ?" proposes a slot.
+    # "Qu'est-ce que tu dirais du gâteau ?" does not match the proposal.
+    if (
+        FRENCH_SOFT_PROPOSAL.search(text)
+        and re.search(
+            r"\b(?:que\s+dirais-tu|qu['’]est-ce\s+que\s+tu\s+dirais)\b",
+            text,
+            re.I,
+        )
+    ):
+        return False
     if FRENCH_INFO_QUESTION.search(text) or INFO_QUESTION.search(text):
         return True
     if re.search(r"\bc['’]est\s+(?:quand|quoi)\b", text, re.I):
@@ -1462,6 +1553,8 @@ def looks_like_french_declarative(text, doc):
 def has_french_negation(text):
     # "n'oublie pas de me rappeler" means "don't forget to remind me".
     # "Pourquoi ne pas se voir" is a proposal, not a cancellation.
+    if FRENCH_SLOT_WITHDRAW.search(text):
+        return True
     check = FRENCH_FORGET.sub(" ", text)
     check = FORGET_NEGATION.sub(" ", check)
     check = FRENCH_SOFT_PROPOSAL.sub(" ", check)
