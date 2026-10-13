@@ -86,7 +86,18 @@ GROUP_PROPOSAL = re.compile(
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
     r"(?:chat|confer)\b"
-    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)",
+    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    # "We should gather/caucus Thursday" is a meeting. "Gather the reports"
+    # and "assemble the furniture" are not.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:gather|assemble|rally|caucus)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:the\s+)?(?:team|group|crew)\s+"
+    r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
+    r"(?:gather|assemble|rally|caucus)\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)",
     re.I,
 )
 
@@ -406,6 +417,57 @@ SLOT_OKAY = re.compile(
     re.I,
 )
 
+# "Would Thursday work for a call?" / "Is Thursday realistic for a sync?"
+# offer a slot. "Does Thursday work…", "work for the laundry", and a bare
+# "Could Thursday work?" do not.
+_SLOT_NOUN = (
+    r"(?:call|meeting|sync|chat|appointment|review|standup)"
+)
+SLOT_WORK = re.compile(
+    r"\b(?:would|could|will|might|may)\s+"
+    r"(?:(?:next|this)\s+)?"
+    r"(?:it|that|this|tomorrow|today|tonight|monday|tuesday|wednesday|"
+    r"thursday|friday|saturday|sunday)\b"
+    r".{0,24}\bwork\s+for\s+(?:a|an|the)\s+" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\b(?:is|are|would|could|will|might|may)\s+"
+    r"(?:(?:next|this)\s+)?"
+    r"(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday)\b"
+    r".{0,30}\b(?:realistic|practical|reasonable|manageable)\s+for\s+"
+    r"(?:a|an|the)\s+" + _SLOT_NOUN + r"\b",
+    re.I,
+)
+
+# "I'm inclined to meet" / "I favor Thursday for the call" / "I'd opt for
+# a call" / "I'd go with Thursday for the sync". Pizza, the lasagna, and
+# "meet the client" stay statements.
+SLOT_CHOICE = re.compile(
+    r"\bi(?:['’]m|\s+am)\s+inclined\s+to\s+meet\b"
+    r"(?!\s+(?:the|a|an|our|my|your)\b)"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+inclined\s+toward\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat)\b"
+    r"|"
+    r"\bi(?:['’]d\s+|\s+would\s+|\s+)favou?r\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+opt\s+for\s+(?:a|an|the)\s+" + _SLOT_NOUN + r"\b"
+    r"|"
+    r"\bi(?:['’]d|\s+would)\s+go\s+with\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    + _SLOT_NOUN + r"\b",
+    re.I,
+)
+
+# "Poke me Thursday" / "Holler at me Thursday" are reminders spaCy mistags.
+# "Poke the fire" and "holler at the dog" are not.
+POKE_HOLLER = re.compile(
+    r"(?:^|[,:;]\s*)poke\s+me\b"
+    r"|"
+    r"(?:^|[,:;]\s*)holler\s+at\s+me\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -466,7 +528,21 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Ax the standup" / "punt the review" / "I'll pass on the call" withdraw
+    # a schedule. Football, weeds, the alarm clock, and pizza do not.
+    r"\b(?:ax|axe|punt|silence)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\bpull\b.{0,40}\b(?:the|our|my|that|this)\s+(?:\w+\s+){0,3}"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\b(?:pass\s+on|bow(?:ing)?\s+out\s+of|sit(?:ting)?\s+out)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+a\s+no\s+for\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b",
     re.I,
 )
 
@@ -803,7 +879,33 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\bbooke(?:z)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
+    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "Case-moi jeudi pour le point" / "tu me cases un créneau ?" /
+    # "on se case ... point ?" book a slot. A cake, and no "?", do not.
+    r"(?:^|[,:;]\s*)case(?:z)?-moi\b.{0,60}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:tu|vous)\s+me\s+case[sz]\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+se\s+case\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "Convoque la réunion" / "fixons le point" summon a meeting.
+    r"(?:^|[,:;]\s*)convoque(?:z)?\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)fixons\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "C'est jouable/faisable ... point" and "ça me va pour le point" accept
+    # a slot. The cake does not.
+    r"\bc['’]est\s+(?:jouable|faisable)\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:ça|ca)\s+me\s+va\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "T'as un créneau jeudi ?" asks for a slot. "T'as un gâteau ?" does not.
+    r"\b(?:t['’]as|tu\s+as|vous\s+avez)\s+(?:un|une)\s+"
+    + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "Bipe-moi" / "sonne-moi" are reminders. "Bipe la porte" is not.
+    r"(?:^|[,:;]\s*)(?:bipe|sonne)(?:z)?-moi\b",
     re.I,
 )
 
@@ -812,7 +914,10 @@ FRENCH_SOFT_PROPOSAL = re.compile(
 FRENCH_SLOT_WITHDRAW = re.compile(
     r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "Je me retire du point" withdraws. "Je me retire de la course" does not.
+    r"\bje\s+me\s+retire\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
@@ -1112,6 +1217,9 @@ def has_request_phrase(text):
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
         SLOT_OKAY,
+        SLOT_WORK,
+        SLOT_CHOICE,
+        POKE_HOLLER,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1372,6 +1480,11 @@ def looks_like_info_question(text):
     # "How would Thursday work for a call?" offers a slot. "Why is Thursday
     # okay for a call?" still asks for a reason.
     if SLOT_OKAY.search(text) and re.match(r"^\s*how\s+would\b", text, re.I):
+        return False
+    # "Is Thursday realistic for a call?" offers a slot. Wh-questions
+    # ("Why would Thursday work for a call?") still ask for a reason.
+    # "Does Thursday work for a call?" does not match SLOT_WORK.
+    if SLOT_WORK.search(text) and not INFO_QUESTION.search(text):
         return False
     # "Remind me what time the meeting is" asks for a fact, not a new reminder.
     # "When can you remind me tomorrow" names the ask and does not match.
