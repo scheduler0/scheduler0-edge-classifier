@@ -1781,6 +1781,779 @@ class SpacyLanguageTests(unittest.TestCase):
                     self.assertEqual(["lemme"], [token.text for token in lemme])
                     self.assertEqual(code == "yo", lemme[0].like_num)
 
+    def test_colloquial_compounds_calendars_and_script_marks(self):
+        # spaCy 3.7.5 blank tokenizers. Chinese splits to characters.
+        # ja/ko/th stay unloaded. Hyphen glue of 18 is the set used by
+        # "state-of-the-art"; French joins it for some compounds and not others.
+        currencies = "\u20a6\u20b1\u20b4\u20ab\u20ad\u20b2\u20b5\u20a1\u20aa\u20b8\u20ae\u060b\u20a2\u20a8"
+        bare_marks = "\u26a1\u2b50\U0001f4e7\U0001f4ce\U0001f4dd\U0001f512\u2600\u2603\u2604\u23f0\U0001f4c5"
+        punct_marks = "\u203d\u203b\u2020\u2021\u00b6\u00a7\u2022\u2023\u2030\u2031"
+        lenticular = "\u3010\u3011\u3014\u3015"
+        digits = "\u0ae6\u0b66\u0be6\u0c66\u0ce6\u0d66\u0de6\u0ed0\u0f20\u1040\u1810"
+        hyphen18 = {
+            "ca", "da", "de", "el", "es", "fi", "hu", "ky", "lb", "nb", "nl",
+            "nn", "pt", "ro", "sr", "sv", "tt", "vi",
+        }
+        hyphen_fr = hyphen18 | {"fr"}
+        no_el_plus_fr = (hyphen18 - {"el"}) | {"fr"}
+        chef_glue = {
+            "da", "de", "el", "es", "fi", "hu", "lb", "nb", "nl", "nn", "pt",
+            "ro", "sr", "sv", "vi",
+        }
+        iso_glue = {
+            "da", "el", "es", "fi", "hu", "lt", "nb", "nl", "nn", "pt", "ro",
+            "sv", "vi",
+        }
+        date_glue = iso_glue  # 2026-10-14 glues in the same set, not tr
+        day_first_glue = iso_glue | {"tr"}
+        pm_kept = {
+            "am", "ar", "da", "en", "fa", "grc", "nb", "nl", "nn", "pt", "ro",
+            "ti", "vi",
+        }
+        kept_dot = {
+            "Jan.": {"am", "ar", "da", "de", "en", "fa", "fo", "grc", "id", "lb", "ms", "sv", "ti", "vi"},
+            "Oct.": {"am", "ar", "en", "fa", "grc", "la", "ms", "ti", "vi"},
+            "Prof.": {"am", "ar", "da", "de", "en", "es", "fa", "grc", "hu", "id", "ms", "nl", "ro", "sv", "ti", "tr", "vi"},
+            "Ms.": {"am", "ar", "en", "fa", "grc", "hu", "nl", "ti", "vi"},
+            "Inc.": {"am", "ar", "da", "de", "en", "fa", "grc", "hu", "nl", "pt", "sl", "ti", "vi"},
+            "Ltd.": {"am", "ar", "en", "fa", "grc", "hu", "nl", "pt", "ti", "tr", "vi"},
+            "Ave.": {"am", "ar", "fa", "grc", "ti", "vi"},
+            "Fig.": {"am", "ar", "da", "fa", "grc", "nl", "ro", "sv", "ti", "vi"},
+            "Vol.": {"am", "ar", "de", "fa", "fr", "grc", "la", "nl", "sv", "ti", "vi"},
+            "ibid.": {"am", "ar", "fa", "grc", "nl", "sl", "ti", "vi"},
+            "ed.": {"am", "ar", "fa", "fi", "grc", "hu", "nl", "pt", "sl", "ti", "vi"},
+        }
+
+        def texts(doc):
+            return [token.text for token in doc]
+
+        for code, pipeline in self.pipelines.items():
+            if pipeline is None:
+                continue
+            for text in currencies:
+                with self.subTest(code=code, kind="currency", text=text):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertTrue(token.is_currency)
+                    self.assertFalse(
+                        token.is_punct or token.is_stop or token.is_alpha or token.like_num
+                    )
+            for text in bare_marks:
+                with self.subTest(code=code, kind="bare", text=text):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertEqual(text, token.text)
+                    self.assertFalse(
+                        token.is_alpha
+                        or token.is_digit
+                        or token.is_punct
+                        or token.is_space
+                        or token.is_stop
+                        or token.is_currency
+                        or token.like_num
+                    )
+            for text in punct_marks:
+                with self.subTest(code=code, kind="punct", text=text):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertTrue(token.is_punct)
+                    self.assertFalse(
+                        token.is_stop
+                        or token.is_quote
+                        or token.is_bracket
+                        or token.is_currency
+                    )
+            for text in lenticular:
+                with self.subTest(code=code, kind="lenticular", text=text):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertTrue(token.is_punct)
+                    self.assertFalse(token.is_quote or token.is_bracket or token.is_currency)
+                    self.assertEqual(code == "zh", token.is_stop)
+            for text in digits:
+                with self.subTest(code=code, kind="digit", text=text):
+                    token = self.round_trip(pipeline, text)[0]
+                    self.assertTrue(token.is_digit)
+                    self.assertEqual(code != "grc", token.like_num)
+                    self.assertFalse(token.is_stop or token.is_alpha or token.is_punct)
+
+            for text in (
+                "wanna", "dunno", "tryna", "oughta", "mighta", "woulda", "whaddya",
+            ):
+                with self.subTest(code=code, kind="colloquial", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                    else:
+                        self.assertEqual([text], texts(doc))
+                        self.assertTrue(doc[0].is_alpha and doc[0].is_lower)
+                        self.assertFalse(doc[0].is_stop or doc[0].like_num)
+
+            with self.subTest(code=code, text="gonna"):
+                doc = self.round_trip(pipeline, "gonna")
+                if code == "zh":
+                    self.assertEqual(list("gonna"), texts(doc))
+                elif code == "en":
+                    self.assertEqual(["gon", "na"], texts(doc))
+                    self.assertTrue(all(token.is_alpha and token.is_lower for token in doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+                else:
+                    self.assertEqual(["gonna"], texts(doc))
+                    self.assertTrue(doc[0].is_alpha and doc[0].is_lower)
+                    self.assertFalse(doc[0].is_stop or doc[0].like_num)
+
+            with self.subTest(code=code, text="gotta"):
+                doc = self.round_trip(pipeline, "gotta")
+                if code == "zh":
+                    self.assertEqual(list("gotta"), texts(doc))
+                elif code == "en":
+                    self.assertEqual(["got", "ta"], texts(doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+                else:
+                    self.assertEqual(["gotta"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[0].like_num)
+
+            with self.subTest(code=code, text="finna"):
+                doc = self.round_trip(pipeline, "finna")
+                if code == "zh":
+                    self.assertEqual(list("finna"), texts(doc))
+                else:
+                    self.assertEqual(["finna"], texts(doc))
+                    self.assertTrue(doc[0].is_alpha and doc[0].is_lower)
+                    self.assertEqual(code == "is", doc[0].is_stop)
+                    self.assertFalse(doc[0].like_num)
+
+            with self.subTest(code=code, text="didja"):
+                doc = self.round_trip(pipeline, "didja")
+                if code == "zh":
+                    self.assertEqual(list("didja"), texts(doc))
+                else:
+                    self.assertEqual(["didja"], texts(doc))
+                    self.assertEqual(code == "yo", doc[0].like_num)
+                    self.assertFalse(doc[0].is_stop)
+
+            with self.subTest(code=code, text="c'mon"):
+                doc = self.round_trip(pipeline, "c'mon")
+                if code == "zh":
+                    self.assertEqual(list("c'mon"), texts(doc))
+                    self.assertTrue(doc[1].is_stop and doc[1].is_quote)
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["c", "'", "mon"], texts(doc))
+                    self.assertTrue(doc[1].is_punct and doc[1].is_quote)
+                    self.assertFalse(any(token.is_stop for token in doc))
+                elif code == "ca":
+                    self.assertEqual(["c'", "mon"], texts(doc))
+                    self.assertTrue(doc[1].is_stop)
+                    self.assertFalse(doc[0].is_stop)
+                elif code == "en":
+                    self.assertEqual(["c'm", "on"], texts(doc))
+                    self.assertTrue(doc[1].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[0].is_alpha)
+                elif code == "fr":
+                    self.assertEqual(["c'", "mon"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                elif code == "it":
+                    self.assertEqual(["c'", "mon"], texts(doc))
+                    self.assertTrue(doc[0].is_stop)
+                    self.assertFalse(doc[1].is_stop)
+                elif code == "lij":
+                    self.assertEqual(["c'", "mon"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                else:
+                    self.assertEqual(["c'mon"], texts(doc))
+                    self.assertTrue(doc[0].is_lower)
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop or doc[0].like_num)
+
+            with self.subTest(code=code, text="'cause"):
+                doc = self.round_trip(pipeline, "'cause")
+                if code == "zh":
+                    self.assertEqual(list("'cause"), texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[0].is_quote)
+                elif code in {"en", "tr", "vi"}:
+                    self.assertEqual(["'cause"], texts(doc))
+                    self.assertTrue(doc[0].is_lower)
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop)
+                else:
+                    self.assertEqual(["'", "cause"], texts(doc))
+                    self.assertTrue(doc[0].is_punct and doc[0].is_quote)
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+
+            with self.subTest(code=code, text="'em"):
+                doc = self.round_trip(pipeline, "'em")
+                if code == "zh":
+                    self.assertEqual(list("'em"), texts(doc))
+                    self.assertTrue(doc[0].is_stop)
+                elif code in {"en", "tr", "vi"}:
+                    self.assertEqual(["'em"], texts(doc))
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop)
+                elif code in {"ca", "lb", "pt"}:
+                    self.assertEqual(["'", "em"], texts(doc))
+                    self.assertTrue(doc[1].is_stop)
+                    self.assertFalse(doc[0].is_stop)
+                else:
+                    self.assertEqual(["'", "em"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+
+            compounds = (
+                ("avant-hier", hyphen_fr, ["avant", "-", "hier"], None),
+                ("week-end", hyphen18 | {"it"}, ["week", "-", "end"], None),
+                ("rendez-vous", hyphen_fr, ["rendez", "-", "vous"], None),
+                ("peut-\u00eatre", no_el_plus_fr, ["peut", "-", "\u00eatre"], None),
+                ("twenty-four", hyphen18, ["twenty", "-", "four"], "en"),
+            )
+            for text, glued, split, special in compounds:
+                with self.subTest(code=code, kind="compound", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                    elif code in glued:
+                        self.assertEqual([text], texts(doc))
+                        self.assertTrue(doc[0].is_lower)
+                        self.assertFalse(doc[0].is_alpha or doc[0].is_stop or doc[0].like_num)
+                    elif special == "en" and code == "en":
+                        self.assertEqual(["twenty", "-", "four"], texts(doc))
+                        self.assertTrue(doc[0].is_stop and doc[0].like_num)
+                        self.assertTrue(doc[2].is_stop and doc[2].like_num)
+                    else:
+                        self.assertEqual(split, texts(doc))
+                        self.assertTrue(doc[1].is_punct)
+                        self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+
+            with self.subTest(code=code, text="vis-\u00e0-vis"):
+                doc = self.round_trip(pipeline, "vis-\u00e0-vis")
+                if code == "zh":
+                    self.assertEqual(list("vis-\u00e0-vis"), texts(doc))
+                elif code in no_el_plus_fr:
+                    self.assertEqual(["vis-\u00e0-vis"], texts(doc))
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop)
+                elif code in {"lij", "yo"}:
+                    self.assertEqual(["vis", "-", "\u00e0", "-", "vis"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[4].is_stop)
+                elif code in {"lt", "lv"}:
+                    self.assertEqual(["vis", "-", "\u00e0", "-", "vis"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[4].is_stop)
+                    self.assertFalse(doc[2].is_stop)
+                else:
+                    self.assertEqual(["vis", "-", "\u00e0", "-", "vis"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+
+            with self.subTest(code=code, text="cul-de-sac"):
+                doc = self.round_trip(pipeline, "cul-de-sac")
+                if code == "zh":
+                    self.assertEqual(list("cul-de-sac"), texts(doc))
+                elif code in hyphen_fr:
+                    self.assertEqual(["cul-de-sac"], texts(doc))
+                elif code in {"ga", "hr", "la", "lij", "tr"}:
+                    self.assertEqual(["cul", "-", "de", "-", "sac"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[4].is_stop)
+                else:
+                    self.assertEqual(["cul", "-", "de", "-", "sac"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+
+            with self.subTest(code=code, text="arc-en-ciel"):
+                doc = self.round_trip(pipeline, "arc-en-ciel")
+                if code == "zh":
+                    self.assertEqual(list("arc-en-ciel"), texts(doc))
+                elif code in hyphen_fr:
+                    self.assertEqual(["arc-en-ciel"], texts(doc))
+                elif code == "sl":
+                    self.assertEqual(["arc", "-", "en", "-", "ciel"], texts(doc))
+                    self.assertTrue(doc[2].is_stop and doc[2].like_num)
+                elif code in {"af", "lij", "tr"}:
+                    self.assertEqual(["arc", "-", "en", "-", "ciel"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[2].like_num)
+                else:
+                    self.assertEqual(["arc", "-", "en", "-", "ciel"], texts(doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+
+            with self.subTest(code=code, text="sur-le-champ"):
+                doc = self.round_trip(pipeline, "sur-le-champ")
+                if code == "zh":
+                    self.assertEqual(list("sur-le-champ"), texts(doc))
+                elif code in hyphen_fr:
+                    self.assertEqual(["sur-le-champ"], texts(doc))
+                elif code == "yo":
+                    self.assertEqual(["sur", "-", "le", "-", "champ"], texts(doc))
+                    self.assertTrue(doc[2].like_num)
+                    self.assertFalse(doc[2].is_stop)
+                elif code in {"ga", "it", "sl", "sq", "tn"}:
+                    self.assertEqual(["sur", "-", "le", "-", "champ"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[2].like_num)
+                else:
+                    self.assertEqual(["sur", "-", "le", "-", "champ"], texts(doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+
+            with self.subTest(code=code, text="apr\u00e8s-midi"):
+                doc = self.round_trip(pipeline, "apr\u00e8s-midi")
+                if code == "zh":
+                    self.assertEqual(list("apr\u00e8s-midi"), texts(doc))
+                elif code in no_el_plus_fr:
+                    self.assertEqual(["apr\u00e8s-midi"], texts(doc))
+                    self.assertFalse(doc[0].is_alpha or doc[0].like_num)
+                elif code == "el":
+                    self.assertEqual(["apr\u00e8", "s-midi"], texts(doc))
+                elif code == "yo":
+                    self.assertEqual(["apr\u00e8s", "-", "midi"], texts(doc))
+                    self.assertTrue(doc[2].like_num)
+                    self.assertFalse(doc[2].is_stop)
+                else:
+                    self.assertEqual(["apr\u00e8s", "-", "midi"], texts(doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+
+            with self.subTest(code=code, text="chef-d'\u0153uvre"):
+                doc = self.round_trip(pipeline, "chef-d'\u0153uvre")
+                if code == "zh":
+                    self.assertEqual(list("chef-d'\u0153uvre"), texts(doc))
+                elif code in chef_glue:
+                    self.assertEqual(["chef-d'\u0153uvre"], texts(doc))
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop)
+                elif code in {"fr", "it", "lij"}:
+                    self.assertEqual(["chef", "-", "d'", "\u0153uvre"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[3].is_stop)
+                elif code == "ca":
+                    self.assertEqual(["chef-d'", "\u0153uvre"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["chef-d", "'", "\u0153uvre"], texts(doc))
+                    self.assertTrue(doc[1].is_quote and doc[1].is_punct)
+                    self.assertFalse(doc[1].is_stop)
+                else:
+                    self.assertEqual(["chef", "-", "d'\u0153uvre"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+
+            with self.subTest(code=code, text="state-of-the-art"):
+                doc = self.round_trip(pipeline, "state-of-the-art")
+                if code == "zh":
+                    self.assertEqual(list("state-of-the-art"), texts(doc))
+                elif code in hyphen18:
+                    self.assertEqual(["state-of-the-art"], texts(doc))
+                elif code == "en":
+                    self.assertEqual(["state", "-", "of", "-", "the", "-", "art"], texts(doc))
+                    self.assertTrue(doc[2].is_stop and doc[4].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[6].is_stop)
+                elif code == "az":
+                    self.assertEqual(["state", "-", "of", "-", "the", "-", "art"], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[0].is_stop or doc[4].is_stop or doc[6].is_stop)
+                elif code == "it":
+                    self.assertEqual(["state", "-", "of", "-", "the", "-", "art"], texts(doc))
+                    self.assertTrue(doc[0].is_stop)
+                    self.assertFalse(doc[2].is_stop or doc[4].is_stop)
+                else:
+                    self.assertEqual(["state", "-", "of", "-", "the", "-", "art"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+
+            for text in ("l'on", "qu'on"):
+                with self.subTest(code=code, kind="elision", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                    elif code in {"ky", "tt"}:
+                        self.assertEqual([text[0] if text.startswith("l") else "qu", "'", "on"], texts(doc))
+                        self.assertTrue(doc[1].is_quote)
+                        self.assertFalse(any(token.is_stop for token in doc))
+                    elif code == "fr":
+                        self.assertEqual([text.split("on")[0], "on"], texts(doc))
+                        self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                    elif code == "ca":
+                        self.assertEqual([text.split("on")[0], "on"], texts(doc))
+                        self.assertTrue(doc[1].is_stop)
+                        self.assertFalse(doc[0].is_stop)
+                    elif code in {"it", "lij"}:
+                        self.assertEqual([text.split("on")[0], "on"], texts(doc))
+                        # Both elide. Only "l'on" marks the clitic as a stop.
+                        self.assertEqual(text == "l'on", doc[0].is_stop)
+                        self.assertFalse(doc[1].is_stop)
+                    else:
+                        self.assertEqual([text], texts(doc))
+                        self.assertFalse(doc[0].is_stop or doc[0].is_alpha)
+
+            with self.subTest(code=code, text="j'y"):
+                doc = self.round_trip(pipeline, "j'y")
+                if code == "zh":
+                    self.assertEqual(list("j'y"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["j", "'", "y"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+                elif code == "fr":
+                    self.assertEqual(["j'", "y"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                elif code in {"ca", "it", "lij"}:
+                    self.assertEqual(["j'", "y"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                else:
+                    self.assertEqual(["j'y"], texts(doc))
+                    self.assertFalse(doc[0].is_alpha or doc[0].is_stop)
+
+            with self.subTest(code=code, text="t'as"):
+                doc = self.round_trip(pipeline, "t'as")
+                if code == "zh":
+                    self.assertEqual(list("t'as"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["t", "'", "as"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+                elif code == "fr":
+                    self.assertEqual(["t'", "as"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                elif code == "it":
+                    self.assertEqual(["t'", "as"], texts(doc))
+                    self.assertTrue(doc[0].is_stop)
+                    self.assertFalse(doc[1].is_stop)
+                elif code in {"ca", "lij"}:
+                    self.assertEqual(["t'", "as"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                else:
+                    self.assertEqual(["t'as"], texts(doc))
+
+            with self.subTest(code=code, text="y'a"):
+                doc = self.round_trip(pipeline, "y'a")
+                if code == "zh":
+                    self.assertEqual(list("y'a"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["y", "'", "a"], texts(doc))
+                    self.assertFalse(doc[2].is_stop)
+                elif code in {"ca", "fr", "it", "lij"}:
+                    self.assertEqual(["y'", "a"], texts(doc))
+                    self.assertTrue(doc[1].is_stop)
+                    self.assertFalse(doc[0].is_stop)
+                else:
+                    self.assertEqual(["y'a"], texts(doc))
+                    self.assertFalse(doc[0].is_stop)
+
+            with self.subTest(code=code, text="n'a"):
+                doc = self.round_trip(pipeline, "n'a")
+                if code == "zh":
+                    self.assertEqual(list("n'a"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["n", "'", "a"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+                elif code in {"fr", "lij"}:
+                    self.assertEqual(["n'", "a"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                elif code in {"ca", "it"}:
+                    self.assertEqual(["n'", "a"], texts(doc))
+                    self.assertTrue(doc[1].is_stop)
+                    self.assertFalse(doc[0].is_stop)
+                else:
+                    self.assertEqual(["n'a"], texts(doc))
+
+            with self.subTest(code=code, text="d'un"):
+                doc = self.round_trip(pipeline, "d'un")
+                if code == "zh":
+                    self.assertEqual(list("d'un"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["d", "'", "un"], texts(doc))
+                    self.assertFalse(any(token.is_stop or token.like_num for token in doc))
+                elif code == "fr":
+                    self.assertEqual(["d'", "un"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop and doc[1].like_num)
+                elif code == "ca":
+                    self.assertEqual(["d'", "un"], texts(doc))
+                    self.assertTrue(doc[1].is_stop and doc[1].like_num)
+                    self.assertFalse(doc[0].is_stop)
+                elif code in {"it", "lb", "lij"}:
+                    self.assertEqual(["d'", "un"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                    self.assertFalse(doc[1].like_num)
+                else:
+                    self.assertEqual(["d'un"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[0].like_num)
+
+            with self.subTest(code=code, text="n'importe"):
+                doc = self.round_trip(pipeline, "n'importe")
+                if code == "zh":
+                    self.assertEqual(list("n'importe"), texts(doc))
+                elif code in {"ky", "tt"}:
+                    self.assertEqual(["n", "'", "importe"], texts(doc))
+                    self.assertFalse(any(token.is_stop for token in doc))
+                elif code == "fr":
+                    self.assertEqual(["n'", "importe"], texts(doc))
+                    self.assertTrue(doc[0].is_stop and doc[1].is_stop)
+                elif code == "lij":
+                    self.assertEqual(["n'", "importe"], texts(doc))
+                    self.assertTrue(doc[0].is_stop)
+                    self.assertFalse(doc[1].is_stop)
+                elif code in {"ca", "it"}:
+                    self.assertEqual(["n'", "importe"], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                else:
+                    self.assertEqual(["n'importe"], texts(doc))
+                    self.assertFalse(doc[0].is_stop)
+
+            for text in ("9h45", "18h", "00h", "18h00", "3:30pm"):
+                with self.subTest(code=code, kind="clock", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                    else:
+                        self.assertEqual([text], texts(doc))
+                        self.assertTrue(doc[0].is_lower)
+                        self.assertFalse(doc[0].like_num or doc[0].is_alpha or doc[0].is_stop)
+
+            for text in ("vers 9h", "d\u00e8s 9h"):
+                with self.subTest(code=code, kind="french-clock", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        head, clock = text.split(" ")
+                        self.assertEqual(list(head) + list(clock), texts(doc))
+                        self.assertEqual(" ", doc[len(head) - 1].whitespace_)
+                    else:
+                        head, clock = text.split(" ")
+                        self.assertEqual([head, clock], texts(doc))
+                        self.assertEqual(" ", doc[0].whitespace_)
+                        self.assertEqual(code == "fr", doc[0].is_stop)
+                        self.assertFalse(doc[1].like_num or doc[1].is_stop)
+
+            for text, keepers in kept_dot.items():
+                with self.subTest(code=code, kind="abbrev", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    stem = text[:-1]
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                        self.assertTrue(doc[-1].is_stop and doc[-1].is_punct)
+                    elif code in keepers:
+                        self.assertEqual([text], texts(doc))
+                        self.assertFalse(doc[0].is_alpha or doc[0].like_num or doc[0].is_stop)
+                        self.assertEqual(text[0].isupper(), doc[0].is_title)
+                    elif text == "Inc." and code == "it":
+                        self.assertEqual(["Inc", "."], texts(doc))
+                        self.assertTrue(doc[0].is_stop and doc[0].is_title)
+                    elif text == "ed." and code == "it":
+                        self.assertEqual(["ed", "."], texts(doc))
+                        self.assertTrue(doc[0].is_stop)
+                        self.assertFalse(doc[0].is_title)
+                    else:
+                        self.assertEqual([stem, "."], texts(doc))
+                        self.assertTrue(doc[1].is_punct)
+                        self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                        self.assertEqual(stem[0].isupper(), doc[0].is_title)
+                        self.assertTrue(doc[0].is_alpha)
+
+            with self.subTest(code=code, text="Ph.D."):
+                doc = self.round_trip(pipeline, "Ph.D.")
+                if code == "zh":
+                    self.assertEqual(list("Ph.D."), texts(doc))
+                    self.assertTrue(doc[2].is_stop and doc[4].is_stop)
+                elif code in {"bn", "en", "pt", "vi"}:
+                    self.assertEqual(["Ph.D."], texts(doc))
+                    self.assertTrue(doc[0].is_title)
+                    self.assertFalse(doc[0].is_alpha or doc[0].like_num or doc[0].is_stop)
+                elif code in {"lt", "pl", "sr"}:
+                    self.assertEqual(["Ph", ".", "D", "."], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[2].is_stop)
+                elif code == "ms":
+                    self.assertEqual(["Ph.", "D."], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[1].is_stop)
+                else:
+                    self.assertEqual(["Ph", ".", "D."], texts(doc))
+                    self.assertTrue(doc[0].is_alpha and doc[0].is_title)
+                    self.assertTrue(doc[2].is_title and not doc[2].is_alpha)
+                    self.assertFalse(doc[0].is_stop or doc[2].is_stop)
+
+            with self.subTest(code=code, text="M.D."):
+                doc = self.round_trip(pipeline, "M.D.")
+                if code == "zh":
+                    self.assertEqual(list("M.D."), texts(doc))
+                    self.assertTrue(doc[1].is_stop and doc[3].is_stop)
+                elif code in {"lt", "sr"}:
+                    self.assertEqual(["M.D", "."], texts(doc))
+                elif code == "pl":
+                    self.assertEqual(["M", ".", "D", "."], texts(doc))
+                    self.assertFalse(doc[0].is_stop or doc[2].is_stop)
+                elif code == "sl":
+                    self.assertEqual(["M.", "D."], texts(doc))
+                else:
+                    self.assertEqual(["M.D."], texts(doc))
+                    self.assertTrue(doc[0].is_upper and doc[0].is_title)
+                    self.assertFalse(doc[0].is_alpha or doc[0].like_num or doc[0].is_stop)
+
+            with self.subTest(code=code, text="B.A."):
+                doc = self.round_trip(pipeline, "B.A.")
+                if code == "zh":
+                    self.assertEqual(list("B.A."), texts(doc))
+                    self.assertTrue(doc[1].is_stop and doc[3].is_stop)
+                elif code in {"lt", "sr"}:
+                    self.assertEqual(["B.A", "."], texts(doc))
+                    self.assertFalse(doc[0].like_num)
+                elif code == "pl":
+                    self.assertEqual(["B", ".", "A", "."], texts(doc))
+                    self.assertTrue(doc[2].is_stop)
+                    self.assertFalse(doc[0].is_stop)
+                elif code == "sl":
+                    self.assertEqual(["B.", "A."], texts(doc))
+                elif code == "vi":
+                    self.assertEqual(["B.A."], texts(doc))
+                    self.assertTrue(doc[0].like_num and doc[0].is_title)
+                    self.assertFalse(doc[0].is_alpha)
+                else:
+                    self.assertEqual(["B.A."], texts(doc))
+                    self.assertTrue(doc[0].is_upper and doc[0].is_title)
+                    self.assertFalse(doc[0].is_alpha or doc[0].like_num or doc[0].is_stop)
+
+            with self.subTest(code=code, text="2026-10-14"):
+                doc = self.round_trip(pipeline, "2026-10-14")
+                if code == "zh":
+                    self.assertEqual(list("2026-10-14"), texts(doc))
+                    self.assertTrue(doc[4].is_stop and doc[7].is_stop)
+                elif code == "grc":
+                    self.assertEqual(["2026", "-", "10", "-", "14"], texts(doc))
+                    self.assertTrue(all(token.is_digit and not token.like_num for token in (doc[0], doc[2], doc[4])))
+                elif code in date_glue:
+                    self.assertEqual(["2026-10-14"], texts(doc))
+                    self.assertFalse(doc[0].like_num or doc[0].is_alpha)
+                else:
+                    self.assertEqual(["2026", "-", "10", "-", "14"], texts(doc))
+                    self.assertTrue(all(token.like_num for token in (doc[0], doc[2], doc[4])))
+                    self.assertTrue(doc[1].is_punct and not doc[1].is_stop)
+
+            with self.subTest(code=code, text="14-10-2026"):
+                doc = self.round_trip(pipeline, "14-10-2026")
+                if code == "zh":
+                    self.assertEqual(list("14-10-2026"), texts(doc))
+                elif code == "grc":
+                    self.assertEqual(["14", "-", "10", "-", "2026"], texts(doc))
+                    self.assertFalse(any(token.like_num for token in doc if token.is_digit))
+                elif code in day_first_glue:
+                    self.assertEqual(["14-10-2026"], texts(doc))
+                    self.assertFalse(doc[0].like_num)
+                else:
+                    self.assertEqual(["14", "-", "10", "-", "2026"], texts(doc))
+                    self.assertTrue(all(token.like_num for token in (doc[0], doc[2], doc[4])))
+
+            with self.subTest(code=code, text="14/10/2026"):
+                doc = self.round_trip(pipeline, "14/10/2026")
+                if code == "zh":
+                    self.assertEqual(list("14/10/2026"), texts(doc))
+                    self.assertTrue(doc[2].is_stop and doc[5].is_stop)
+                elif code in {"de", "id", "ms"}:
+                    self.assertEqual(["14", "/", "10", "/", "2026"], texts(doc))
+                    self.assertTrue(all(token.like_num for token in (doc[0], doc[2], doc[4])))
+                elif code == "fa":
+                    self.assertEqual(["14/10/2026"], texts(doc))
+                    self.assertTrue(doc[0].like_num)
+                else:
+                    self.assertEqual(["14/10/2026"], texts(doc))
+                    self.assertFalse(doc[0].like_num)
+
+            with self.subTest(code=code, text="14.10.2026"):
+                doc = self.round_trip(pipeline, "14.10.2026")
+                if code == "zh":
+                    self.assertEqual(list("14.10.2026"), texts(doc))
+                elif code == "pl":
+                    self.assertEqual(["14", ".", "10", ".", "2026"], texts(doc))
+                    self.assertTrue(all(token.like_num for token in (doc[0], doc[2], doc[4])))
+                elif code in {"grc", "la"}:
+                    self.assertEqual(["14.10.2026"], texts(doc))
+                    self.assertFalse(doc[0].like_num)
+                else:
+                    self.assertEqual(["14.10.2026"], texts(doc))
+                    self.assertTrue(doc[0].like_num)
+
+            with self.subTest(code=code, text="2026-10-14T14:00:00Z"):
+                doc = self.round_trip(pipeline, "2026-10-14T14:00:00Z")
+                if code == "zh":
+                    self.assertEqual(list("2026-10-14T14:00:00Z"), texts(doc))
+                elif code in iso_glue:
+                    self.assertEqual(["2026-10-14T14:00:00Z"], texts(doc))
+                    self.assertTrue(doc[0].is_upper and doc[0].is_title)
+                    self.assertFalse(doc[0].like_num or doc[0].is_alpha)
+                elif code == "grc":
+                    self.assertEqual(["2026", "-", "10", "-", "14T14:00:00Z"], texts(doc))
+                    self.assertFalse(doc[0].like_num or doc[2].like_num or doc[4].like_num)
+                    self.assertTrue(doc[4].is_upper and doc[4].is_title)
+                else:
+                    self.assertEqual(["2026", "-", "10", "-", "14T14:00:00Z"], texts(doc))
+                    self.assertTrue(doc[0].like_num and doc[2].like_num)
+                    self.assertTrue(doc[4].is_upper and doc[4].is_title)
+                    self.assertFalse(doc[4].like_num or doc[1].is_stop)
+
+            for text in ("PT30S", "P2DT3H"):
+                with self.subTest(code=code, kind="duration", text=text):
+                    doc = self.round_trip(pipeline, text)
+                    if code == "zh":
+                        self.assertEqual(list(text), texts(doc))
+                    else:
+                        self.assertEqual([text], texts(doc))
+                        self.assertTrue(doc[0].is_upper)
+                        self.assertFalse(doc[0].is_title or doc[0].is_alpha or doc[0].like_num)
+
+            with self.subTest(code=code, text="3:30 p.m."):
+                doc = self.round_trip(pipeline, "3:30 p.m.")
+                if code == "zh":
+                    self.assertEqual(list("3:30") + list("p.m."), texts(doc))
+                    self.assertEqual(" ", doc[3].whitespace_)
+                elif code in pm_kept:
+                    self.assertEqual(["3:30", "p.m."], texts(doc))
+                    self.assertEqual(" ", doc[0].whitespace_)
+                    self.assertFalse(doc[0].like_num or doc[1].is_alpha or doc[1].is_stop)
+                else:
+                    self.assertEqual(["3:30", "p.m", "."], texts(doc))
+                    self.assertEqual(" ", doc[0].whitespace_)
+                    self.assertTrue(doc[2].is_punct)
+                    self.assertFalse(doc[0].like_num or doc[1].is_stop)
+
+            with self.subTest(code=code, text="NaN"):
+                doc = self.round_trip(pipeline, "NaN")
+                if code == "zh":
+                    self.assertEqual(list("NaN"), texts(doc))
+                    self.assertTrue(doc[0].is_upper and doc[0].is_title and doc[1].is_lower)
+                else:
+                    self.assertEqual(["NaN"], texts(doc))
+                    self.assertTrue(doc[0].is_alpha)
+                    self.assertFalse(doc[0].is_lower or doc[0].is_upper or doc[0].is_title or doc[0].like_num)
+
+            with self.subTest(code=code, text="Infinity"):
+                doc = self.round_trip(pipeline, "Infinity")
+                if code == "zh":
+                    self.assertEqual(list("Infinity"), texts(doc))
+                else:
+                    self.assertEqual(["Infinity"], texts(doc))
+                    self.assertTrue(doc[0].is_alpha and doc[0].is_title)
+                    self.assertFalse(doc[0].is_upper or doc[0].like_num)
+
+            with self.subTest(code=code, text="1/2"):
+                doc = self.round_trip(pipeline, "1/2")
+                if code == "zh":
+                    self.assertEqual(["1", "/", "2"], texts(doc))
+                    self.assertTrue(doc[1].is_stop and doc[0].like_num and doc[2].like_num)
+                elif code in {"de", "id", "ms"}:
+                    self.assertEqual(["1", "/", "2"], texts(doc))
+                    self.assertTrue(doc[0].like_num and doc[2].like_num and doc[1].is_punct)
+                    self.assertFalse(doc[1].is_stop)
+                elif code in {"grc", "la", "yo"}:
+                    self.assertEqual(["1/2"], texts(doc))
+                    self.assertFalse(doc[0].like_num)
+                else:
+                    self.assertEqual(["1/2"], texts(doc))
+                    self.assertTrue(doc[0].like_num)
+
+            with self.subTest(code=code, text="2.5e10"):
+                doc = self.round_trip(pipeline, "2.5e10")
+                if code == "zh":
+                    self.assertEqual(list("2.5e10"), texts(doc))
+                elif code == "pl":
+                    self.assertEqual(["2", ".", "5e10"], texts(doc))
+                    self.assertTrue(doc[0].like_num)
+                    self.assertFalse(doc[2].like_num)
+                else:
+                    self.assertEqual(["2.5e10"], texts(doc))
+                    self.assertTrue(doc[0].is_lower)
+                    self.assertFalse(doc[0].like_num or doc[0].is_alpha)
+
+            with self.subTest(code=code, text="1e-3"):
+                doc = self.round_trip(pipeline, "1e-3")
+                if code == "zh":
+                    self.assertEqual(list("1e-3"), texts(doc))
+                elif code in {"id", "ms", "pl"}:
+                    self.assertEqual(["1e", "-", "3"], texts(doc))
+                    self.assertTrue(doc[2].like_num and doc[1].is_punct)
+                    self.assertFalse(doc[0].like_num or doc[1].is_stop)
+                else:
+                    self.assertEqual(["1e-3"], texts(doc))
+                    self.assertTrue(doc[0].is_lower)
+                    self.assertFalse(doc[0].like_num or doc[0].is_alpha)
+
     def round_trip(self, pipeline, text):
         doc = pipeline(text)
         self.assertEqual(text, doc.text)
@@ -2114,6 +2887,138 @@ class MultilingualClassifyTests(unittest.TestCase):
             "P2W": ("reject", "not_a_schedule_request", "P2W", "p2w", "NOUN", False, False),
             "lemme": ("reject", "not_a_schedule_request", "lemme", "lemme", "PROPN", False, False),
             "GmbH": ("reject", "not_a_schedule_request", "GmbH", "GmbH", "PROPN", False, False),
+        }
+        for text, (decision, reason, root_text, lemma, pos, subject, french) in expected.items():
+            with self.subTest(text=text):
+                self.assertEqual(french, text_looks_french(text))
+                with patch("intent.duckling_parse", return_value=[]):
+                    result = classify(text)
+                root = result["features"]["root"]
+                self.assertEqual(text, result["text"])
+                self.assertEqual((decision, reason), (result["decision"], result["reason"]))
+                self.assertEqual(root_text, root["text"])
+                self.assertEqual(lemma, root["lemma"])
+                self.assertEqual(pos, root["pos"])
+                self.assertEqual(subject, result["features"]["has_subject"])
+                self.assertEqual(
+                    reason == "temporal_signal_without_clear_request",
+                    result["features"]["has_temporal_signal"],
+                )
+                self.assertEqual(
+                    reason == "request_without_temporal_signal",
+                    result["features"]["looks_like_request"],
+                )
+
+    def test_colloquial_calendar_and_script_edges_keep_their_decisions(self):
+        # decision, reason, root text, lemma, pos, subject, french.
+        # "avant-hier" is not French, but the French time regex still sees "hier".
+        # "vers 9h" and "dès 9h" are subject-less verbs and still not requests:
+        # the French path only treats English imperative lemmas as commands.
+        expected = {
+            "\u20a6": ("reject", "not_a_schedule_request", "\u20a6", "\u20a6", "ADV", False, False),
+            "\u20b1": ("clarify", "request_without_temporal_signal", "\u20b1", "\u20b1", "VERB", False, False),
+            "\u20b4": ("reject", "not_a_schedule_request", "\u20b4", "\u20b4", "NOUN", False, False),
+            "\u20ab": ("reject", "not_a_schedule_request", "\u20ab", "\u20ab", "ADV", False, False),
+            "\u20ad": ("reject", "not_a_schedule_request", "\u20ad", "\u20ad", "PROPN", False, False),
+            "\u20b2": ("reject", "not_a_schedule_request", "\u20b2", "\u20b2", "ADV", False, False),
+            "\u20b5": ("clarify", "request_without_temporal_signal", "\u20b5", "\u20b5", "VERB", False, False),
+            "\u20a1": ("reject", "not_a_schedule_request", "\u20a1", "\u20a1", "PUNCT", False, False),
+            "\u20aa": ("reject", "not_a_schedule_request", "\u20aa", "\u20aa", "PUNCT", False, False),
+            "\u20b8": ("reject", "not_a_schedule_request", "\u20b8", "\u20b8", "PROPN", False, False),
+            "\u20ae": ("reject", "not_a_schedule_request", "\u20ae", "\u20ae", "PROPN", False, False),
+            "\u060b": ("reject", "not_a_schedule_request", "\u060b", "\u060b", "NOUN", False, False),
+            "\u20a2": ("clarify", "request_without_temporal_signal", "\u20a2", "\u20a2", "VERB", False, False),
+            "\u20a8": ("reject", "not_a_schedule_request", "\u20a8", "\u20a8", "PROPN", False, False),
+            "\u26a1": ("reject", "not_a_schedule_request", "\u26a1", "\u26a1", "NOUN", False, False),
+            "\u2b50": ("reject", "not_a_schedule_request", "\u2b50", "\u2b50", "NOUN", False, False),
+            "\U0001f4e7": ("clarify", "request_without_temporal_signal", "\U0001f4e7", "\U0001f4e7", "VERB", False, False),
+            "\U0001f4ce": ("reject", "not_a_schedule_request", "\U0001f4ce", "\U0001f4ce", "PRON", False, False),
+            "\U0001f4dd": ("reject", "not_a_schedule_request", "\U0001f4dd", "\U0001f4dd", "NOUN", False, False),
+            "\U0001f512": ("reject", "not_a_schedule_request", "\U0001f512", "\U0001f512", "NOUN", False, False),
+            "\u2600": ("reject", "not_a_schedule_request", "\u2600", "\u2600", "NOUN", False, False),
+            "\u2603": ("reject", "not_a_schedule_request", "\u2603", "\u2603", "PUNCT", False, False),
+            "\u2604": ("reject", "not_a_schedule_request", "\u2604", "\u2604", "ADV", False, False),
+            "\u23f0": ("reject", "not_a_schedule_request", "\u23f0", "\u23f0", "X", False, False),
+            "\U0001f4c5": ("reject", "not_a_schedule_request", "\U0001f4c5", "\U0001f4c5", "NOUN", False, False),
+            "\u203d": ("reject", "not_a_schedule_request", "\u203d", "\u203d", "PROPN", False, False),
+            "\u203b": ("reject", "not_a_schedule_request", "\u203b", "\u203b", "NUM", False, False),
+            "\u2020": ("clarify", "request_without_temporal_signal", "\u2020", "\u2020", "VERB", False, False),
+            "\u2021": ("reject", "not_a_schedule_request", "\u2021", "\u2021", "NOUN", False, False),
+            "\u00b6": ("reject", "not_a_schedule_request", "\u00b6", "\u00b6", "NOUN", False, False),
+            "\u00a7": ("reject", "not_a_schedule_request", "\u00a7", "\u00a7", "PROPN", False, False),
+            "\u2022": ("reject", "not_a_schedule_request", "\u2022", "\u2022", "X", False, False),
+            "\u2023": ("reject", "not_a_schedule_request", "\u2023", "\u2023", "PROPN", False, False),
+            "\u2030": ("clarify", "request_without_temporal_signal", "\u2030", "\u2030", "VERB", False, False),
+            "\u2031": ("reject", "not_a_schedule_request", "\u2031", "\u2031", "PUNCT", False, False),
+            "\u3010": ("reject", "not_a_schedule_request", "\u3010", "\u3010", "PUNCT", False, False),
+            "\u3011": ("reject", "not_a_schedule_request", "\u3011", "\u3011", "PUNCT", False, False),
+            "\u3014": ("reject", "not_a_schedule_request", "\u3014", "\u3014", "ADJ", False, False),
+            "\u3015": ("clarify", "request_without_temporal_signal", "\u3015", "\u3015", "VERB", False, False),
+            "\u0ae6": ("reject", "not_a_schedule_request", "\u0ae6", "\u0ae6", "X", False, False),
+            "\u0ce6": ("reject", "not_a_schedule_request", "\u0ce6", "\u0ce6", "NUM", False, False),
+            "\u0ed0": ("reject", "not_a_schedule_request", "\u0ed0", "\u0ed0", "NUM", False, False),
+            "\u1810": ("reject", "not_a_schedule_request", "\u1810", "\u1810", "NUM", False, False),
+            "gonna": ("clarify", "request_without_temporal_signal", "gon", "go", "VERB", False, False),
+            "wanna": ("reject", "not_a_schedule_request", "wanna", "wanna", "PROPN", False, False),
+            "gotta": ("clarify", "request_without_temporal_signal", "got", "get", "VERB", False, False),
+            "dunno": ("clarify", "request_without_temporal_signal", "dunno", "dunno", "VERB", False, False),
+            "finna": ("reject", "not_a_schedule_request", "finna", "finna", "PROPN", False, False),
+            "tryna": ("clarify", "request_without_temporal_signal", "tryna", "tryna", "VERB", False, False),
+            "oughta": ("reject", "not_a_schedule_request", "oughta", "oughta", "PROPN", False, False),
+            "mighta": ("reject", "not_a_schedule_request", "mighta", "mighta", "PROPN", False, False),
+            "woulda": ("reject", "not_a_schedule_request", "woulda", "woulda", "NOUN", False, False),
+            "c'mon": ("clarify", "request_without_temporal_signal", "c'm", "come", "VERB", False, False),
+            "'cause": ("reject", "not_a_schedule_request", "'cause", "'cause", "ADP", False, False),
+            "'em": ("reject", "not_a_schedule_request", "'em", "them", "PRON", False, False),
+            "didja": ("reject", "not_a_schedule_request", "didja", "didja", "PROPN", False, False),
+            "whaddya": ("reject", "not_a_schedule_request", "whaddya", "whaddya", "NOUN", False, False),
+            "avant-hier": ("clarify", "temporal_signal_without_clear_request", "hier", "hier", "NOUN", False, False),
+            "vis-\u00e0-vis": ("reject", "not_a_schedule_request", "vis", "vis", "X", False, True),
+            "cul-de-sac": ("reject", "not_a_schedule_request", "cul", "cul", "PROPN", False, False),
+            "arc-en-ciel": ("reject", "not_a_schedule_request", "arc", "arc", "PROPN", False, False),
+            "chef-d'\u0153uvre": ("reject", "not_a_schedule_request", "d'\u0153uvre", "d'\u0153uvre", "PROPN", False, True),
+            "week-end": ("reject", "not_a_schedule_request", "end", "end", "NOUN", False, False),
+            "l'on": ("clarify", "request_without_temporal_signal", "l'on", "l'on", "VERB", False, False),
+            "qu'on": ("reject", "not_a_schedule_request", "qu'on", "qu'on", "ADJ", False, False),
+            "j'y": ("clarify", "request_without_temporal_signal", "j'y", "j'y", "VERB", False, False),
+            "t'as": ("reject", "not_a_schedule_request", "t'as", "t'as", "INTJ", False, False),
+            "y'a": ("clarify", "request_without_temporal_signal", "y'a", "y'a", "VERB", False, False),
+            "n'a": ("clarify", "request_without_temporal_signal", "n'a", "n'a", "VERB", False, False),
+            "d'un": ("reject", "not_a_schedule_request", "d'un", "d'un", "ADV", False, False),
+            "9h45": ("clarify", "temporal_signal_without_clear_request", "9h45", "9h45", "X", False, True),
+            "18h": ("clarify", "temporal_signal_without_clear_request", "18h", "18h", "NOUN", False, True),
+            "00h": ("clarify", "temporal_signal_without_clear_request", "00h", "00h", "NOUN", False, True),
+            "vers 9h": ("clarify", "temporal_signal_without_clear_request", "vers", "ver", "VERB", False, True),
+            "d\u00e8s 9h": ("clarify", "temporal_signal_without_clear_request", "d\u00e8s", "d\u00e8s", "VERB", False, True),
+            "sur-le-champ": ("reject", "not_a_schedule_request", "champ", "champ", "NOUN", False, False),
+            "state-of-the-art": ("reject", "not_a_schedule_request", "state", "state", "NOUN", False, False),
+            "twenty-four": ("reject", "not_a_schedule_request", "four", "four", "NUM", False, False),
+            "Jan.": ("reject", "not_a_schedule_request", "Jan.", "Jan.", "PROPN", False, False),
+            "Oct.": ("reject", "not_a_schedule_request", "Oct.", "Oct.", "PROPN", False, False),
+            "Prof.": ("reject", "not_a_schedule_request", "Prof.", "Prof.", "PROPN", False, False),
+            "Ave.": ("reject", "not_a_schedule_request", "Ave", "Ave", "PROPN", False, False),
+            "Ph.D.": ("reject", "not_a_schedule_request", "Ph.D.", "ph.d.", "NOUN", False, False),
+            "B.A.": ("reject", "not_a_schedule_request", "B.A.", "B.A.", "PROPN", False, False),
+            "ibid.": ("reject", "not_a_schedule_request", "ibid", "ibid", "NOUN", False, False),
+            "2026-10-14": ("reject", "not_a_schedule_request", "2026", "2026", "NUM", False, False),
+            "14/10/2026": ("reject", "not_a_schedule_request", "14/10/2026", "14/10/2026", "NUM", False, False),
+            "14.10.2026": ("reject", "not_a_schedule_request", "14.10.2026", "14.10.2026", "X", False, False),
+            "2026-10-14T14:00:00Z": ("reject", "not_a_schedule_request", "14T14:00:00Z", "14t14:00:00z", "NUM", False, False),
+            "PT30S": ("reject", "not_a_schedule_request", "PT30S", "PT30S", "PUNCT", False, False),
+            "P2DT3H": ("reject", "not_a_schedule_request", "P2DT3H", "P2DT3H", "PUNCT", False, False),
+            "3:30pm": ("reject", "not_a_schedule_request", "3:30pm", "3:30pm", "NUM", False, False),
+            "3:30 p.m.": ("reject", "not_a_schedule_request", "p.m.", "p.m.", "NOUN", False, False),
+            "NaN": ("reject", "not_a_schedule_request", "NaN", "NaN", "PROPN", False, False),
+            "Infinity": ("reject", "not_a_schedule_request", "Infinity", "infinity", "NOUN", False, False),
+            "1/2": ("reject", "not_a_schedule_request", "1/2", "1/2", "NUM", False, False),
+            "2.5e10": ("reject", "not_a_schedule_request", "2.5e10", "2.5e10", "NOUN", False, False),
+            "1e-3": ("reject", "not_a_schedule_request", "1e-3", "1e-3", "NUM", False, False),
+            "18h00": ("clarify", "temporal_signal_without_clear_request", "18h00", "18h00", "NUM", False, True),
+            "peut-\u00eatre": ("reject", "not_a_schedule_request", "\u00eatre", "\u00eatre", "NOUN", False, True),
+            "c'est-\u00e0-dire": ("reject", "not_a_schedule_request", "c'est", "c'est", "PROPN", False, True),
+            "n'importe": ("reject", "not_a_schedule_request", "n'importe", "n'importe", "PROPN", False, False),
+            "apr\u00e8s-midi": ("clarify", "temporal_signal_without_clear_request", "midi", "midi", "NOUN", False, True),
+            "rendez-vous": ("reject", "not_a_schedule_request", "vous", "vous", "ADJ", False, True),
         }
         for text, (decision, reason, root_text, lemma, pos, subject, french) in expected.items():
             with self.subTest(text=text):
