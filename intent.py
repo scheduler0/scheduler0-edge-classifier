@@ -86,7 +86,18 @@ GROUP_PROPOSAL = re.compile(
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
     r"(?:chat|confer)\b"
-    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)",
+    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    # "We should have a call" / "the team should set up a meeting".
+    # Lunch, a report, and the printer are not meetings.
+    r"\bwe\s+(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:have\s+|set\s+(?:up\s+)?)(?:a|an|the)\s+"
+    r"(?:call|sync|chat|appointment|review|standup|meeting(?!\s+of\b))\b"
+    r"|"
+    r"\b(?:the\s+)?(?:team|group|crew)\s+"
+    r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
+    r"(?:have\s+|set\s+(?:up\s+)?)(?:a|an|the)\s+"
+    r"(?:call|sync|chat|appointment|review|standup|meeting(?!\s+of\b))\b",
     re.I,
 )
 
@@ -120,7 +131,13 @@ NEED_TO_SCHEDULE = re.compile(
     r"(?:remind|email|schedule|book|ping|notify|send|call)\b"
     r"|"
     r"^\s*have\s+(?:someone|somebody|the\s+(?:team|group|crew))\s+meet\b"
-    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)",
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their)\b)"
+    r"|"
+    r"\b(?:i|we|the\s+team|someone|somebody)\s+needs?\s+to\s+have\s+(?:a|an|the)\s+"
+    r"(?:call|sync|chat|appointment|review|standup|meeting(?!\s+of\b))\b"
+    r"|"
+    r"\b(?:someone|somebody)\s+should\s+set\s+up\s+(?:a|an|the)\s+"
+    r"(?:call|sync|chat|appointment|review|standup|meeting(?!\s+of\b))\b",
     re.I,
 )
 
@@ -189,7 +206,7 @@ HEDGED_PROPOSAL = re.compile(
     r"\bit(?:['’]d|\s+would)\s+help\s+if\s+(?:you|we|someone)\s+"
     r"(?:remind\w*|schedul\w*|book\w*|met|meet)\b"
     r"|"
-    r"\b(?:it(?:['’]d|\s+would)|would)\s+be\s+(?:good|great|nice)\s+to\s+"
+    r"\b(?:it(?:['’]d|\s+would)|would)\s+be\s+(?:good|great|nice|ideal|perfect)\s+to\s+"
     r"(?:meet|schedule|book|reschedule|sync)\b"
     r"|"
     r"\bany\s+possibility\s+of\s+"
@@ -207,7 +224,33 @@ HEDGED_PROPOSAL = re.compile(
     # "I wouldn't mind meeting" / "Wouldn't mind a call" accepts, it does not cancel.
     r"\b(?:i\s+)?(?:would(?:n't|\s+not)|do(?:n't|\s+not)|dont)\s+mind\s+"
     r"(?:meeting\b(?!\s+(?:the|a|an|our|my|your)\b)|syncing\b|"
-    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)",
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|reminder)\b)"
+    r"|"
+    # "I'd choose Thursday for the call" / "my choice is Thursday for the sync".
+    # The lasagna, pizza, and the sofa are not a slot.
+    r"\bi(?:['’]d|\s+would)\s+(?:choose|pick|select)\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bmy\s+choice\s+is\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    # "Are you up for a call?" — sentence-initial "Up for a call" is above.
+    # Pizza and lunch are not.
+    r"\b(?:are\s+(?:you|we)|you|i(?:['’]d|\s+would)\s+be|"
+    r"i(?:['’]m|\s+am)|we(?:['’]re|\s+are))\s+"
+    r"up\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+all\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+all\s+in\s+for\b.{0,40}\b"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)s?\b"
+    r"|"
+    # "A call Thursday would be ideal." A party or lunch would not.
+    r"\b(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r".{0,40}\bwould\s+be\s+(?:ideal|perfect|convenient|suitable)\b",
     re.I,
 )
 
@@ -402,7 +445,25 @@ SLOT_OKAY = re.compile(
     r"|"
     # "Circle Thursday for the review" books a slot. spaCy often misses the verb.
     r"(?:^|[,:;]\s*)circle\b.{0,50}\bfor\s+(?:a|an|the)\s+"
-    r"(?:review|sync|call|meeting|standup)\b",
+    r"(?:review|sync|call|meeting|standup)\b"
+    r"|"
+    # "Is Thursday convenient for a call?" / "Would Thursday be a good slot
+    # for the review?" Laundry, pizza, lunch, and a bare "Is Thursday ideal?"
+    # do not name a meeting.
+    r"\b(?:is|are|would|could|will|might|may)\s+"
+    r"(?:(?:next|this)\s+)?"
+    r"(?:it|that|tomorrow|today|tonight|monday|tuesday|wednesday|"
+    r"thursday|friday|saturday|sunday)\b"
+    r".{0,50}\b(?:convenient|suitable|ideal|perfect|sensible|preferable)\s+"
+    r"for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\b(?:is|are|would|could|will|might|may)\s+"
+    r"(?:(?:next|this)\s+)?"
+    r"(?:it|that|tomorrow|today|tonight|monday|tuesday|wednesday|"
+    r"thursday|friday|saturday|sunday)\b"
+    r".{0,50}\ba\s+good\s+(?:time|slot)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b",
     re.I,
 )
 
@@ -466,7 +527,22 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "I decline the Thursday call" / "duck out of the sync" / "no-go for the
+    # review" withdraw a meeting. Lasagna, a race, and pizza do not.
+    r"\b(?:declin(?:e|ing)|duck(?:ing)?\s+out\s+of)\b.{0,50}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\bno-go\s+(?:for|on)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\bdrop\s+me\s+from\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\b(?:strike|cross\s+off)\b.{0,40}\b(?:the|our|my|that|this)\s+"
+    r"(?:\w+\s+){0,3}"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b",
     re.I,
 )
 
@@ -803,7 +879,31 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\bbooke(?:z)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
+    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "Coince-moi un créneau" / "file-moi un créneau" / "on s'aligne ... point"
+    # book a slot. A cake, the salt, and a match do not.
+    r"(?:^|[,:;]\s*)coince(?:z)?-moi\b.{0,60}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)file(?:z)?-moi\b.{0,60}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+se\s+file\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+s['’]aligne\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)branche(?:z)?-moi\b.{0,60}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+se\s+branche\b"
+    r"(?![^?\n]{0,50}\b(?:g[aâ]teau|gateau|film|match|lampe|fichiers?)\b)"
+    r"[^?\n]{0,50}\?"
+    r"|"
+    # "Synchro jeudi ?" is a call. A cake, a film, or "synchro the files" is not.
+    r"(?:^|[,:;]\s*)synchro\b"
+    r"(?![^?\n]{0,50}\b(?:g[aâ]teau|gateau|film|match|fichiers?|files?)\b)"
+    r"[^?\n]{0,40}\b(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|"
+    r"vendredi|samedi|dimanche|" + _FR_MEET_NOUN + r")\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+se\s+synchronise\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
     re.I,
 )
 
@@ -812,7 +912,17 @@ FRENCH_SOFT_PROPOSAL = re.compile(
 FRENCH_SLOT_WITHDRAW = re.compile(
     r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "Je décline le point" / "on enterre la réunion" withdraw a meeting.
+    # A cake, a race, and a project do not.
+    r"\bje\s+d[eé]cline\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+me\s+d[eé]sinscris\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bj['’]abandonne\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+enterre\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
@@ -1383,7 +1493,14 @@ def looks_like_info_question(text):
         return True
     if PAST_SCHEDULE_QUESTION.search(text) or CONFIRMATION_QUESTION.search(text):
         return True
-    if COPULAR_TIME_QUESTION.search(text) and not SCHEDULE_CONTENT.search(text):
+    # "Is Thursday a good slot for the review?" offers a time. "Review" is
+    # outside the schedule-word list, so the copular check would call it a
+    # question. "Is tomorrow a holiday?" still does not match a slot offer.
+    if (
+        COPULAR_TIME_QUESTION.search(text)
+        and not SCHEDULE_CONTENT.search(text)
+        and not SLOT_OKAY.search(text)
+    ):
         return True
     when_request = WHEN_YOU_SCHEDULE.search(text)
     if when_request and _LEFTOVER_TIME_WORD.search(text[when_request.end() :]):
