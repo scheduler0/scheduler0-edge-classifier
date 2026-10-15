@@ -86,7 +86,28 @@ GROUP_PROPOSAL = re.compile(
     r"\b(?:the\s+)?(?:team|group|crew)\s+"
     r"(?:should|could|can|shall|must|might|ought\s+to|have\s+to)\s+"
     r"(?:chat|confer)\b"
-    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)",
+    r"(?!\s+(?:about|up|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    # "We should reconvene/circle up/powwow/zoom Thursday" is a meeting.
+    # An object, "zoom in", or "align the shelves" is not.
+    r"\b(?:we|(?:the\s+)?(?:team|group|crew))\s+"
+    r"(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:reconvene|powwow|conference|zoom)\b"
+    r"(?!\s+(?:in|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:we|(?:the\s+)?(?:team|group|crew))\s+"
+    r"(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"circle\s+up\b"
+    r"(?!\s+(?:the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:we|(?:the\s+)?(?:team|group|crew))\s+"
+    r"(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"align\b"
+    r"(?!\s+(?:on|with|the|a|an|our|my|your|his|her|their|it)\b)"
+    r"|"
+    r"\b(?:we|(?:the\s+)?(?:team|group|crew))\s+"
+    r"(?:should|could|can|shall|must|might|may|ought\s+to|have\s+to|gotta)\s+"
+    r"(?:compare\s+notes|get\s+on\s+(?:a|an|the)\s+(?:call|meeting|sync))\b",
     re.I,
 )
 
@@ -200,6 +221,10 @@ HEDGED_PROPOSAL = re.compile(
     r"|"
     r"\bi(?:['’]m|\s+am)\s+open\s+to\s+(?:a|an)\s+"
     r"(?:call|meeting|sync|chat)\b"
+    r"|"
+    # "I'd settle for a call" accepts a meeting. "I'd settle for pizza" does not.
+    r"\bi(?:['’]d|\s+would)\s+settle\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment)\b"
     r"|"
     r"\byou\s+(?:might|may|could)\s+want\s+to\s+"
     r"(?:remind|email|schedule|book|ping|notify|send|call|meet)\b"
@@ -402,7 +427,41 @@ SLOT_OKAY = re.compile(
     r"|"
     # "Circle Thursday for the review" books a slot. spaCy often misses the verb.
     r"(?:^|[,:;]\s*)circle\b.{0,50}\bfor\s+(?:a|an|the)\s+"
-    r"(?:review|sync|call|meeting|standup)\b",
+    r"(?:review|sync|call|meeting|standup)\b"
+    r"|"
+    # "Is Thursday acceptable/optimal for a call?" offers a slot.
+    # "acceptable for the laundry" and bare "Is Thursday optimal?" do not.
+    r"\b(?:acceptable|agreeable|favou?rable|optimal)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\b(?:decent|solid)\s+(?:time|slot)\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bany\s+good\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    # "I'm good/fine/okay with Thursday for a call." Pizza has no meeting noun.
+    r"\b(?:good|fine|okay|ok)\s+with\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\b(?:fine|good)\s+by\s+me\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    # A weekday before "is/works best" is the slot. "This sofa is best for a call" is not.
+    r"\b(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|\d{1,2})\b.{0,24}\b(?:works|is)\s+best\s+for\s+"
+    r"(?:a|an|the)\s+(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    # "I'm available Thursday for a call." "I'm available Thursday" and lunch are not.
+    r"\b(?:i(?:['’]m|\s+am)|we(?:['’]re|\s+are)|are\s+(?:you|we)|you)\s+"
+    r"available\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bi\s+can\s+spare\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b"
+    r"|"
+    r"\b(?:got|have)\s+bandwidth\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review)\b",
     re.I,
 )
 
@@ -466,7 +525,20 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Put off the Thursday meeting" / "bow out of the call" cancel a slot.
+    # "Put off the laundry" and "bow out of the race" do not.
+    r"\bput\s+off\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|reminders?|calls?|digests?|reviews?)\b"
+    r"|"
+    r"\bbow\s+out\s+of\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?)\b"
+    r"|"
+    r"\bunsubscribe\b.{0,50}\b(?:digests?|reminders?)\b"
+    r"|"
+    r"\bwithdraw(?:ing)?\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?)\b",
     re.I,
 )
 
@@ -769,7 +841,7 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"\b(?:ça|ca)\s+(?:te|vous)\s+va\b"
     r"|"
     r"\bon\s+se\s+fait\s+(?:un|une)\s+"
-    r"(?:point|call|r[eé]union|cr[eé]neau|visio)\b[^?\n]{0,80}\?"
+    r"(?:point|call|r[eé]union|cr[eé]neau|visio|conf|brief)\b[^?\n]{0,80}\?"
     r"|"
     r"\bpourrait-on\s+se\s+(?:voir|retrouver|caler|parler|r[eé]unir)\b"
     r"|"
@@ -803,7 +875,28 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\bbooke(?:z)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
+    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "On s'organise un point jeudi ?" / "On se coordonne ... point ?"
+    # Without "?" , and "un gâteau", stay a statement.
+    r"\bon\s+s['’]organise\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+se\s+coordonne\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+se\s+programme\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "T'as 15 minutes jeudi pour le point ?" "T'as 15 minutes ?" does not.
+    r"\bt['’]as\s+(?:\d+|cinq|dix|quinze|vingt|trente|quelques)\s+minutes\b"
+    r".{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "C'est parfait/idéal pour un point." "C'est parfait jeudi" does not.
+    r"\bc['’]est\s+(?:parfait|id[eé]al)\s+pour\s+(?:un|une|le|la)\s+"
+    + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bping(?:ue|ez)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "On se meet/sync jeudi ?" is a meeting. "On se meet le film" is not.
+    r"\bon\s+se\s+(?:meet|sync)\b(?!\s+(?:le|la|les|un|une|du|des)\b)[^?\n]*\?",
     re.I,
 )
 
@@ -812,7 +905,15 @@ FRENCH_SOFT_PROPOSAL = re.compile(
 FRENCH_SLOT_WITHDRAW = re.compile(
     r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "Je passe mon tour pour le point" / "on oublie le point" withdraw.
+    # "le match" and "le gâteau" do not.
+    r"\bje\s+passe\s+mon\s+tour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+oublie\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bon\s+skip\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
