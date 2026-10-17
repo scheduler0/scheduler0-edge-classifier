@@ -407,6 +407,114 @@ class LocaleResolutionTests(unittest.TestCase):
                 nlp.assert_not_called()
 
 
+    def test_october_seventeen_extensions_and_charsets(self):
+        kept = {
+            "en-US-u-hc-h12": "en_US",
+            "en-US-u-hc-h24": "en_US",
+            "  en-US-u-hc-h12  ": "en_US",
+            "en-GB-u-lb-loose": "en_GB",
+            "en-NZ-u-em-emoji": "en_NZ",
+            "en-IE-u-em-text": "en_IE",
+            "en-IN-u-rg-inzzzz": "en_IN",
+            "en-ZA-u-sd-zaec": "en_ZA",
+            "en-PH-u-fw-sun": "en_PH",
+            "en-TT-u-ca-islamic": "en_TT",
+            "en-JM-u-nu-latn": "en_JM",
+            "en-BZ-u-hc-h12": "en_BZ",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en-Latn",
+            "en-Geor",
+            "en-Khmr",
+            "en-Taml",
+            "en-Beng",
+            "en-Mymr",
+            "en-EU",
+            "en-EZ",
+            "en-UN",
+            "en-830",
+            "en-833",
+            "en-831",
+            "en-QO",
+            "en_US\u0263",
+            "en\u026a_US",
+            "en_AU\u2080",
+            "en_NZ\u24ea",
+            "en_CA\U0001f319",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u0263en",
+            "\u026aen_US",
+            "\u2080en",
+            "\u24eaen",
+            "\U0001f319en_US",
+            "\U0001f5d3\ufe0fen",
+            "th_TH.UTF-8",
+            "bn_BD.UTF-8",
+            "ta_IN.UTF-8",
+            "ka_GE.UTF-8",
+            "km_KH.UTF-8",
+            "my_MM.UTF-8",
+            "mn_MN.UTF-8",
+            "lo_LA.UTF-8",
+            "sw_TZ.UTF-8",
+            "ur_PK.UTF-8",
+            "ne_NP.UTF-8",
+            "si_LK.UTF-8",
+            "or_IN.UTF-8",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_hour_cycle_and_rejects_new_charsets(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-hc-h24",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-Khmr",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("\u0263en", "ka_GE.UTF-8", "th_TH.UTF-8", "sw_TZ.UTF-8"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
+
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
         payload = entities if entities is not None else TOMORROW
