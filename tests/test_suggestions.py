@@ -406,6 +406,106 @@ class LocaleResolutionTests(unittest.TestCase):
                 parsed.assert_not_called()
                 nlp.assert_not_called()
 
+    def test_october_eighteen_locale_spellings(self):
+        kept = {
+            "en-US-u-ca-iso8601": "en_US",
+            "  en-US-u-ca-iso8601  ": "en_US",
+            "en-GB-u-ca-iso8601": "en_GB",
+            "en-AU-u-hc-h23": "en_AU",
+            "en-CA-u-ca-islamic-civil": "en_CA",
+            "en-IE-u-nu-latn": "en_IE",
+            "en-ZA-u-ca-coptic": "en_ZA",
+            "en-IN-u-ca-indian": "en_IN",
+            "en-PH-u-ca-gregory": "en_PH",
+            "en-NZ-u-cf-account": "en_NZ",
+            "en-JM-u-dx-thai": "en_JM",
+            "en-BZ-u-lw-phrase": "en_BZ",
+            "en-TT-u-ss-none": "en_TT",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en-SG",
+            "en-HK",
+            "en_HK",
+            "EN-hk",
+            "en-MY",
+            "en-ng",
+            "en-NG",
+            "en-KE",
+            "en-GH",
+            "en-PK",
+            "en-BD",
+            "en-SG-u-nu-latn",
+            "en-Orya",
+            "en-Sinh",
+            "en-Knda",
+            "en-Mlym",
+            "en-Guru",
+            "en-Telu",
+            "en-Laoo",
+            "en-Mong",
+            "en-Tibt",
+            "en_US\u20bc",
+            "en\u20be_US",
+            "en_\u0e3fUS",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u20bcen",
+            "\u20been_US",
+            "\u0e3fen",
+            "\u3007en",
+            "\u06f0en_US",
+            "ml_IN.UTF-8",
+            "kn_IN.UTF-8",
+            "te_IN.UTF-8",
+            "gu_IN.UTF-8",
+            "pa_IN.UTF-8",
+            "mr_IN.UTF-8",
+            "as_IN.UTF-8",
+            "bo_CN.UTF-8",
+            "dz_BT.UTF-8",
+            "ug_CN.UTF-8",
+            "ii_CN.UTF-8",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            result = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-ca-iso8601",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+
+        for locale in ("\u20bcen", "ml_IN.UTF-8", "kn_IN.UTF-8", "bo_CN.UTF-8"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
