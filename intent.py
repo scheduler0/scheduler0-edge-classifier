@@ -406,6 +406,28 @@ SLOT_OKAY = re.compile(
     re.I,
 )
 
+# "RSVP for Thursday's call", "I'm confirming Thursday for the review",
+# "It's a plan for a call", and "I'm in for the sync" accept a slot.
+# A party, pizza, and a launch do not.
+SLOT_COMMIT = re.compile(
+    r"\brsvp\b.{0,50}\b"
+    r"(?:meetings?|calls?|syncs?|standups?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\b(?:i(?:['’]m|\s+am)|we(?:['’]re|\s+are))\s+confirming\b.{0,50}\b"
+    r"(?:meetings?|calls?|syncs?|standups?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bit(?:['’]s|\s+is)\s+a\s+plan\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\b(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday)\s+is\s+a\s+plan\s+for\s+(?:a|an|the)\s+"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+in\s+for\b.{0,40}\b"
+    r"(?:call|meeting|sync|chat|appointment|review|standup)s?\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -466,7 +488,39 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "Ghost the Thursday meeting" / "I want off the call" withdraw.
+    # A party, the office, a shift, and a package do not.
+    r"\bghost(?:ing)?\b.{0,50}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bget\s+me\s+out\s+of\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\b(?:i|we)\s+want\s+off\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bopt\s+me\s+out\s+of\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\btake\s+my\s+name\s+off\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\b(?:i(?:['’]m|\s+am)|we(?:['’]re|\s+are))\s+dropping\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bno\s+can\s+do\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+a\s+(?:pass|maybe)\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\b(?:i(?:['’]m|\s+am)|we(?:['’]re|\s+are))\s+tentative\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b"
+    r"|"
+    r"\bcount\s+me\s+as\s+a\s+no\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|chats?|appointments?)\b",
     re.I,
 )
 
@@ -807,12 +861,51 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     re.I,
 )
 
-# "Je me désiste du point" / "on raye le point" withdraw a meeting.
-# "Je me désiste de la course" and "on raye le tableau" do not.
+# "On se tient un point ?", "planifions la réunion", "je te book un point",
+# and "réunion jeudi ?" book a slot. A cake, a film, and a sofa do not.
+# "On se tient" / "tu me bookes" / "je te call" need a question mark; a bare
+# statement ("on se connecte jeudi", "réunion jeudi") does not.
+FRENCH_SLOT_ASK = re.compile(
+    r"\bon\s+se\s+tient\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"\bon\s+se\s+connecte\b[^?\n]{0,60}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"(?:^|[,:;]\s*)planifions\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)tenons\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+te\s+book(?:e|es)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\btu\s+me\s+bookes?\b[^?\n]{0,40}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"(?:^|[,:;]\s*)(?:le\s+|la\s+|un\s+|une\s+)?"
+    r"(?:r[eé]unions?|points?)\b[^?\n]{0,40}"
+    r"\b(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche|\d{1,2}\s*h)\b[^?\n]*\?"
+    r"|"
+    r"(?:^|[,:;]\s*)faisons\b.{0,40}\br[eé]unions?\b"
+    r"|"
+    r"\bje\s+te\s+call\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    r"(?:^|[,:;]\s*)repoussons\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bcarr[eé]ment\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bcompte\s+sur\s+moi\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)slot(?:e|ez)?-moi\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    re.I,
+)
+
+# "Je me désiste du point" / "on raye le point" / "je skip le point" withdraw
+# a meeting. "Je me désiste de la course", "on raye le tableau", and
+# "je skip le match" do not.
 FRENCH_SLOT_WITHDRAW = re.compile(
     r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+skip(?:pe)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
@@ -1112,11 +1205,13 @@ def has_request_phrase(text):
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
         SLOT_OKAY,
+        SLOT_COMMIT,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
         FRENCH_PROPOSAL,
         FRENCH_SOFT_PROPOSAL,
+        FRENCH_SLOT_ASK,
         FRENCH_CANCEL_REQUEST,
     )
     # A copular subject ("Schedule is full") must not count as "schedule ...".
@@ -1519,6 +1614,7 @@ def looks_like_french_request(text, doc):
         or FRENCH_IMPERATIVE.search(text)
         or FRENCH_PROPOSAL.search(text)
         or FRENCH_SOFT_PROPOSAL.search(text)
+        or FRENCH_SLOT_ASK.search(text)
         or FRENCH_CANCEL_REQUEST.search(text)
         or FRENCH_REMEMBER.search(text)
         or FRENCH_NEGATED_IMPERATIVE.search(text)
