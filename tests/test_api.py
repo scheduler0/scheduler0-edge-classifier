@@ -119,6 +119,44 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
                 self.assertEqual([], result["warnings"])
 
+    def test_analyze_endpoint_accepts_october_nineteen_english_tags(self):
+        for locale in ("en-US-u-ca-japanese", "en-ZW", "en-US-u-fw-thu", "en-Cans"):
+            with self.subTest(locale=locale):
+                request = AnalyzeRequest(
+                    messages=[
+                        SuggestionMessage(
+                            speaker="Victor",
+                            timestamp="2026-07-17T10:00:00-04:00",
+                            message="I'll send the proposal tomorrow.",
+                        )
+                    ],
+                    options=SuggestionOptions(locale=locale),
+                )
+                with patch("suggestions.duckling_parse", return_value=TIME_ENTITY):
+                    result = analyze_suggestions(request)
+                self.assertEqual("COMMITMENT", result["suggestions"][0]["type"])
+                self.assertEqual([], result["warnings"])
+
+        for locale in ("₱en", "ko_KR.UTF-8", "ru_RU.UTF-8", "cy_GB.UTF-8", "‰en", "ʔen"):
+            with self.subTest(locale=locale):
+                request = AnalyzeRequest(
+                    messages=[
+                        SuggestionMessage(
+                            speaker="Victor",
+                            timestamp="2026-07-17T10:00:00-04:00",
+                            message="I'll send the proposal tomorrow.",
+                        )
+                    ],
+                    options=SuggestionOptions(locale=locale),
+                )
+                with patch("suggestions.duckling_parse") as parsed:
+                    with self.assertRaises(HTTPException) as ctx:
+                        analyze_suggestions(request)
+                self.assertEqual(400, ctx.exception.status_code)
+                self.assertEqual("UNSUPPORTED_LOCALE", ctx.exception.detail["code"])
+                self.assertIn(locale, ctx.exception.detail["message"])
+                parsed.assert_not_called()
+
     def test_healthz_reports_ok_when_both_backends_respond(self):
         with patch("app.requests.post") as post:
             post.return_value.raise_for_status.return_value = None
