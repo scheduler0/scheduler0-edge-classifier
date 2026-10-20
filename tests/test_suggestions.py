@@ -406,6 +406,112 @@ class LocaleResolutionTests(unittest.TestCase):
                 parsed.assert_not_called()
                 nlp.assert_not_called()
 
+    def test_territory_extensions_and_posix_locales(self):
+        kept = {
+            "en-US-u-ca-islamic-umalqura": "en_US",
+            "  en-US-u-ca-islamic-umalqura  ": "en_US",
+            "en-US-u-nu-deva": "en_US",
+            "en-GB-u-tz-gblon": "en_GB",
+            "en-AU-u-tz-auper": "en_AU",
+            "en-CA-u-tz-cator": "en_CA",
+            "en-NZ-u-tz-nzakl": "en_NZ",
+            "en-IE-u-tz-iedub": "en_IE",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en-AS",
+            "en-GU",
+            "en-IM",
+            "en-JE",
+            "en-GG",
+            "en-KY",
+            "en-BM",
+            "en-GI",
+            "en-PR",
+            "en-MU",
+            "en_AS",
+            "EN-im",
+            "  en-je  ",
+            "en-Brai",
+            "en-Hang",
+            "en-Hira",
+            "en-Kana",
+            "en-Runr",
+            "en-Zyyy",
+            "en-Zzzz",
+            "en-Copt",
+            "en-Shaw",
+            "en\u20a5",
+            "en\u20a5_US",
+            "en_\u20b6US",
+            "en_US\u20b7",
+            "en_\uff04US",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "sq_AL.UTF-8",
+            "mk_MK.UTF-8",
+            "nn_NO.UTF-8",
+            "pt_BR.UTF-8",
+            "fr_CA.UTF-8",
+            "zh_TW.UTF-8",
+            "yo_NG.UTF-8",
+            "ky_KG.UTF-8",
+            "bs_BA.UTF-8",
+            "gd_GB.UTF-8",
+            "\u20a5en",
+            "\u20b6en_US",
+            "\uff04en",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_umalqura_and_rejects_posix_before_parsing(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-ca-islamic-umalqura",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-Brai",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("sq_AL.UTF-8", "\u20a5en", "nn_NO.UTF-8", "zh_TW.UTF-8"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
 
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):

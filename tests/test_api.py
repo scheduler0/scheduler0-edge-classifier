@@ -72,6 +72,13 @@ class ApiTests(unittest.TestCase):
             "zh-yue",
             "\ufffcen_US",
             "\u115fen",
+            "sq_AL.UTF-8",
+            "nn_NO.UTF-8",
+            "pt_BR.UTF-8",
+            "zh_TW.UTF-8",
+            "\u20a5en",
+            "\u20b6en_US",
+            "\uff04en",
         ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(
@@ -102,6 +109,10 @@ class ApiTests(unittest.TestCase):
             "\u3000en_IE\u3000",
             "en-US-u-nu-arab",
             "enm",
+            "en-US-u-nu-deva",
+            "en-AU-u-tz-auper",
+            "en-IM",
+            "en-Brai",
         ):
             with self.subTest(locale=locale):
                 request = AnalyzeRequest(
