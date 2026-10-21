@@ -407,6 +407,127 @@ class LocaleResolutionTests(unittest.TestCase):
                 nlp.assert_not_called()
 
 
+    def test_october_21_regions_scripts_and_posix_locales(self):
+        kept = {
+            "en-US-u-ca-coptic": "en_US",
+            "  en-US-u-nu-beng  ": "en_US",
+            "en-US-u-fw-tue": "en_US",
+            "en-GB-u-tz-gbbel": "en_GB",
+            "en-AU-u-tz-aubne": "en_AU",
+            "en-CA-u-tz-cavan": "en_CA",
+            "en-IN-u-tz-inbom": "en_IN",
+            "en-ZA-u-tz-zajnb": "en_ZA",
+            "en-PH-u-ca-islamic-civil": "en_PH",
+            "en-JM-u-fw-fri": "en_JM",
+            "en-NZ-u-tz-nzcht": "en_NZ",
+            "en-IE-u-fw-wed": "en_IE",
+            "en-TT-u-nu-mlym": "en_TT",
+            "en-BZ-u-ca-persian": "en_BZ",
+        }
+        for raw, expected in kept.items():
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual(expected, resolve_duckling_locale(raw))
+
+        for raw in (
+            "en-AG",
+            "en-AI",
+            "en-BS",
+            "en-DM",
+            "en-GD",
+            "en-KN",
+            "en-LC",
+            "en-VC",
+            "en-VG",
+            "en-VI",
+            "en-TC",
+            "en-MS",
+            "en-SH",
+            "en-FK",
+            "en-Cham",
+            "en-Bali",
+            "en-Java",
+            "en-Sund",
+            "en-Batk",
+            "en-Olck",
+            "en-Adlm",
+            "en-Vaii",
+            "en-Tfng",
+            "en-Lana",
+            "en\u3251",
+            "en_US\u5186",
+            "en\U0001f558_US",
+            "en_\u2053US",
+            "en_GB\u2e41",
+        ):
+            with self.subTest(locale=raw):
+                self.assertTrue(is_english_locale(raw))
+                self.assertEqual("en_GB", resolve_duckling_locale(raw))
+
+        for raw in (
+            "\u3251en",
+            "\u5186en_US",
+            "\U0001f558en",
+            "\u2053en_GB",
+            "\u2e41en",
+            "zu_ZA.UTF-8",
+            "xh_ZA.UTF-8",
+            "ha_NG.UTF-8",
+            "ig_NG.UTF-8",
+            "rw_RW.UTF-8",
+            "lg_UG.UTF-8",
+            "ak_GH.UTF-8",
+            "wo_SN.UTF-8",
+            "so_SO.UTF-8",
+            "om_ET.UTF-8",
+            "ti_ER.UTF-8",
+            "st_ZA.UTF-8",
+            "nso_ZA.UTF-8",
+            "ss_ZA.UTF-8",
+        ):
+            with self.subTest(locale=raw):
+                self.assertFalse(is_english_locale(raw))
+                with self.assertRaises(UnsupportedLocaleError) as ctx:
+                    resolve_duckling_locale(raw)
+                self.assertEqual(raw, ctx.exception.locale)
+
+    def test_analyze_forwards_coptic_calendar_and_rejects_october_21_tags(self):
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            kept = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-US-u-ca-coptic",
+                )
+            )
+        self.assertEqual("en_US", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", kept["suggestions"][0]["type"])
+
+        with patch("suggestions.duckling_parse", return_value=TOMORROW) as parsed:
+            fallback = analyze(
+                _request(
+                    [_msg("I'll send you the proposal tomorrow.")],
+                    locale="en-AG",
+                )
+            )
+        self.assertEqual("en_GB", parsed.call_args.kwargs["locale"])
+        self.assertEqual("COMMITMENT", fallback["suggestions"][0]["type"])
+
+        for locale in ("\u3251en", "zu_ZA.UTF-8", "ha_NG.UTF-8", "\U0001f558en"):
+            with self.subTest(locale=locale):
+                with patch("suggestions.duckling_parse") as parsed:
+                    with patch("suggestions.nlp") as nlp:
+                        with self.assertRaises(UnsupportedLocaleError) as ctx:
+                            analyze(
+                                _request(
+                                    [_msg("I'll send you the proposal tomorrow.")],
+                                    locale=locale,
+                                )
+                            )
+                self.assertEqual(locale, ctx.exception.locale)
+                parsed.assert_not_called()
+                nlp.assert_not_called()
+
+
 class SuggestionEdgeCaseTests(unittest.TestCase):
     def analyze(self, request, entities=None):
         payload = entities if entities is not None else TOMORROW
