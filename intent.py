@@ -406,6 +406,113 @@ SLOT_OKAY = re.compile(
     re.I,
 )
 
+# "Thursday is timely / an apt time / the move for a call" endorses a slot.
+# Pizza, a sofa, a bare "Thursday is a winner", and "Why is Thursday timely"
+# do not. "The sky is clear" is weather, not a slot.
+_DAY_OR_IT = (
+    r"(?:it|tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday)"
+)
+_MEET_NOUN = (
+    r"(?:calls?|meetings?|syncs?|chats?|appointments?|reviews?|standups?)"
+)
+_SLOT_FIT_ADJECTIVE = r"(?:timely|propitious|clear)"
+_SLOT_FIT_TIME = r"(?:apt|smart|wise)"
+_SLOT_FIT_IDIOM = (
+    r"(?:the\s+move|the\s+play|the\s+ticket|a\s+winner|"
+    r"spot[\s-]on|on\s+point|dialed\s+in)"
+)
+SLOT_FIT = re.compile(
+    r"\b" + _DAY_OR_IT + r"\s+(?:is|looks|would\s+be)\s+"
+    + _SLOT_FIT_ADJECTIVE + r"\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:is|would)\s+" + _DAY_OR_IT + r"\s+(?:be\s+)?"
+    + _SLOT_FIT_ADJECTIVE + r"\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b" + _DAY_OR_IT + r"\s+is\s+(?:a|an)\s+"
+    + _SLOT_FIT_TIME + r"\s+time\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:is|would)\s+" + _DAY_OR_IT + r"\s+(?:be\s+)?(?:a|an)\s+"
+    + _SLOT_FIT_TIME + r"\s+time\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b" + _DAY_OR_IT + r"\s+is\s+"
+    + _SLOT_FIT_IDIOM + r"\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:is|would)\s+" + _DAY_OR_IT + r"\s+(?:be\s+)?"
+    + _SLOT_FIT_IDIOM + r"\s+for\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    # "I've got a gap Thursday for a call" / "Thursday has an opening".
+    # A gap in the fence and a store opening do not.
+    r"\b(?:i(?:['’]ve|\s+have)\s+got|there(?:['’]s|\s+is))\s+a\s+gap\b"
+    r".{0,40}\bfor\s+(?:a|an|the)\s+" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:has|have|got)\s+an\s+opening\b.{0,40}\bfor\s+(?:a|an|the)\s+"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\bi\s+can\s+give\s+(?:you|us)\s+\d+\s+minutes\b.{0,40}\bfor\s+"
+    r"(?:a|an|the)\s+" + _MEET_NOUN + r"\b",
+    re.I,
+)
+
+# "I'll be there for the sync" / "I'll sit in on the review" accepts.
+# Pizza, a party, the pool, and a podcast do not.
+ATTEND_PRESENCE = re.compile(
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+be\s+there\s+for\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+make\s+it\s+to\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+attend\b.{0,40}\b" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+be\s+in\s+attendance\s+at\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+come\s+to\b.{0,40}\b" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\bi(?:['’]m|\s+am)\s+coming\s+to\b.{0,40}\b" + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+turn\s+up\s+for\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+sit\s+in\s+on\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+dial\s+into\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+jump\s+into\b.{0,40}\b"
+    + _MEET_NOUN + r"\b"
+    r"|"
+    r"\b(?:i|we)(?:['’]ll|\s+will)\s+pop\s+in\s+for\b.{0,40}\b"
+    + _MEET_NOUN + r"\b",
+    re.I,
+)
+
+# "We should hold an all-hands" / "run the daily" names a session.
+# "Hold the door", "run the printer", and "have a party" do not.
+_FORUM_WHO = (
+    r"(?:we|the\s+team|the\s+group|the\s+crew|someone|somebody)"
+)
+_FORUM_MODAL = (
+    r"(?:should|could|shall|must|ought\s+to|have\s+to|gotta)"
+)
+GROUP_CEREMONY = re.compile(
+    r"\b" + _FORUM_WHO + r"\s+" + _FORUM_MODAL + r"\s+"
+    r"hold\s+(?:an\s+all-hands|a\s+town\s+hall|a\s+design\s+review|"
+    r"a\s+kickoff)\b"
+    r"|"
+    r"\b" + _FORUM_WHO + r"\s+" + _FORUM_MODAL + r"\s+"
+    r"run\s+(?:sprint\s+planning|the\s+daily)\b"
+    r"|"
+    r"\b" + _FORUM_WHO + r"\s+" + _FORUM_MODAL + r"\s+"
+    r"do\s+a\s+(?:backlog\s+grooming|dry\s+run|demo|war\s+room)\b"
+    r"|"
+    r"\b" + _FORUM_WHO + r"\s+" + _FORUM_MODAL + r"\s+"
+    r"have\s+a\s+(?:design\s+critique|tabletop|check-in|war\s+room)\b",
+    re.I,
+)
+
 INFO_QUESTION = re.compile(
     r"^\s*(what(?!\s+about)|why|how|when|where|who|which)\b",
     re.I,
@@ -466,7 +573,26 @@ SOFT_CANCEL = re.compile(
     r"\bno\s+(?:more\s+)?(?:meetings?|reminders?|standups?|syncs?|calls?|digests?)\b"
     r"|"
     r"\bskip\s+(?:tomorrow|today|tonight|monday|tuesday|wednesday|thursday|"
-    r"friday|saturday|sunday)\b",
+    r"friday|saturday|sunday)\b"
+    r"|"
+    # "I'm wavering / unsure / leaning no / unavailable" withdraws a meeting.
+    # Pizza, lasagna, a shipment, and coffee do not.
+    r"\bwavering\s+on\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|appointments?)\b"
+    r"|"
+    r"\bunsure\s+about\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|appointments?)\b"
+    r"|"
+    r"\bleaning\s+no\s+on\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|appointments?)\b"
+    r"|"
+    r"\bunavailable\s+for\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|appointments?)\b"
+    r"|"
+    r"\bstepping\s+out\s+of\b.{0,40}\b"
+    r"(?:meetings?|standups?|syncs?|calls?|reviews?|appointments?)\b"
+    r"|"
+    r"\bsit\s+this\s+(?:meeting|sync|call|review|standup)\s+out\b",
     re.I,
 )
 
@@ -803,7 +929,31 @@ FRENCH_SOFT_PROPOSAL = re.compile(
     r"|"
     r"\bbooke(?:z)?-moi\b.{0,50}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?",
+    r"\bon\s+se\s+donne\b[^?\n]{0,50}\b" + _FR_MEET_NOUN + r"\b[^?\n]*\?"
+    r"|"
+    # "Jeudi tombe bien / m'arrange / c'est opportun pour le point" accepts
+    # a slot. A cake does not. "Pourquoi" still asks for a reason.
+    r"\b(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|demain|"
+    r"[çc]a|ca)\s+tombe\s+bien\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bm['’]arrange\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bm['’]irait\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bc['’]est\s+(?:opportun|propice|pile)\s+pour\b.{0,40}\b"
+    + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "On se fait un kickoff / un daily / un tête-à-tête ... ?" needs "?".
+    # A cake stays a statement. Without "?" it is not a request.
+    r"\bon\s+se\s+fait\s+(?:un|une|le|la)\s+"
+    r"(?:kickoff|all-hands|daily|comit[eé]|rattrapage|debrief|check-in|"
+    r"t[eê]te-[aà]-t[eê]te)\b"
+    r"(?!.{0,40}\b(?:g[aâ]teau|gateau|film|match|chaise|chien|porte)\b)"
+    r"[^?\n]{0,80}\?"
+    r"|"
+    r"(?:^|[,:;]\s*)(?:kickoff|all-hands|comit[eé])\s+"
+    r"(?:demain|aujourd['’]?hui|lundi|mardi|mercredi|jeudi|vendredi|"
+    r"samedi|dimanche)\b[^?\n]*\?",
     re.I,
 )
 
@@ -812,7 +962,34 @@ FRENCH_SOFT_PROPOSAL = re.compile(
 FRENCH_SLOT_WITHDRAW = re.compile(
     r"\bje\s+me\s+d[eé]siste\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
     r"|"
-    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    r"\bon\s+raye(?:z)?\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    # "Je renonce au point" / "je serai absent" / "je me fais excuser"
+    # withdraws. A match does not.
+    r"\bje\s+renonce\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+serai\s+absent\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+me\s+fais\s+excuser\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
+    re.I,
+)
+
+# "Je serai là pour le point" / "présent pour la réunion" accepts.
+# A cake and a match do not.
+FRENCH_PRESENCE = re.compile(
+    r"\bje\s+serai\s+l[aà]\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+viens\s+(?:au|aux|[àa]\s+la)\b.{0,30}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+participe\s+(?:au|aux|[àa]\s+la)\b.{0,30}\b"
+    + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bje\s+me\s+joins\s+(?:au|aux|[àa]\s+la)\b.{0,30}\b"
+    + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"(?:^|[,:;]\s*)pr[eé]sent\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b"
+    r"|"
+    r"\bcompte-moi\s+pr[eé]sent\s+pour\b.{0,40}\b" + _FR_MEET_NOUN + r"\b",
     re.I,
 )
 
@@ -1112,6 +1289,9 @@ def has_request_phrase(text):
         FIRST_PERSON_SCHEDULE,
         POLITE_INDIRECT,
         SLOT_OKAY,
+        SLOT_FIT,
+        ATTEND_PRESENCE,
+        GROUP_CEREMONY,
         OBLIGATION_REQUEST,
         FRENCH_POLITE,
         FRENCH_IMPERATIVE,
@@ -1383,7 +1563,13 @@ def looks_like_info_question(text):
         return True
     if PAST_SCHEDULE_QUESTION.search(text) or CONFIRMATION_QUESTION.search(text):
         return True
-    if COPULAR_TIME_QUESTION.search(text) and not SCHEDULE_CONTENT.search(text):
+    # "Is Thursday timely for a review?" offers a slot. "Is Thursday timely?"
+    # and "Is tomorrow a holiday?" do not.
+    if (
+        COPULAR_TIME_QUESTION.search(text)
+        and not SCHEDULE_CONTENT.search(text)
+        and not SLOT_FIT.search(text)
+    ):
         return True
     when_request = WHEN_YOU_SCHEDULE.search(text)
     if when_request and _LEFTOVER_TIME_WORD.search(text[when_request.end() :]):
@@ -1528,6 +1714,7 @@ def looks_like_french_request(text, doc):
         )
         or FRENCH_YESNO_REQUEST.search(text)
         or FRENCH_OBLIGATION.search(text)
+        or FRENCH_PRESENCE.search(text)
         or REQUEST_STARTERS.search(text)
         or QUESTION_REQUEST.search(text)
     ):
