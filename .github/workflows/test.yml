@@ -19,6 +19,9 @@ concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Unit Tests
@@ -49,10 +52,12 @@ jobs:
     
     - name: Test summary
       if: always()
+      env:
+        JOB_STATUS: ${{ job.status }}
       run: |
-        if [ ${{ job.status }} == 'success' ]; then
-          echo "✅ All tests passed!"
+        if [ "$JOB_STATUS" = "success" ]; then
+          echo "All tests passed."
         else
-          echo "❌ Some tests failed. Please fix them before merging."
+          echo "Some tests failed. Please fix them before merging."
           exit 1
         fi

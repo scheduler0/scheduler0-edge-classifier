@@ -9,13 +9,18 @@
 # waits for Duckling to be available before starting Uvicorn.
 FROM amazonlinux:2023
 
-RUN dnf install -y python3 curl-minimal \
-    && dnf clean all
+RUN dnf install -y python3 curl-minimal shadow-utils util-linux \
+    && dnf clean all \
+    && useradd --system --uid 10001 --home-dir /home/appuser --create-home --shell /sbin/nologin appuser
 
 WORKDIR /app
 
 COPY intent.py suggestions.py app.py start.sh ./
-RUN chmod +x start.sh
+# start.sh begins as root so it can read a root-owned host_ip mount, then
+# drops to appuser before the HTTP server listens. The image itself stays
+# readable by that user.
+RUN chmod 755 start.sh \
+    && chown -R appuser:appuser /app
 
 EXPOSE 8080
 

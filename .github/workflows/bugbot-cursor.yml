@@ -8,278 +8,352 @@ on:
   pull_request_review_comment:
     types: [created]
 
+# Review-comment and issue-comment events run the workflow from the default
+# branch. Only a trusted reviewer may cause a fork or same-repo head to be
+# executed, and that execution cannot use a write token.
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  statuses: write
+  contents: read
 
 concurrency:
   group: bugbot-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
+  authorize:
+    name: Authorize untrusted code
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+      same_repo: ${{ steps.gate.outputs.same_repo }}
+      number: ${{ steps.gate.outputs.number }}
+      sha: ${{ steps.gate.outputs.sha }}
+    steps:
+      - name: Decide whether this event may run PR code
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const trusted = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+            const eventName = context.eventName;
+            let proceed = false;
+            let sameRepo = false;
+            let number = "";
+            let sha = "";
+
+            function isSha(value) {
+              return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+            }
+
+            function remember(pr) {
+              if (!pr || !pr.head || !pr.head.repo || !isSha(pr.head.sha)) {
+                return;
+              }
+              sameRepo = pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+              number = String(pr.number);
+              sha = pr.head.sha;
+              proceed = true;
+            }
+
+            if (eventName === "pull_request") {
+              remember(context.payload.pull_request);
+            } else if (eventName === "issue_comment" && context.payload.issue.pull_request) {
+              const body = (context.payload.comment && context.payload.comment.body) || "";
+              const association = context.payload.comment && context.payload.comment.author_association;
+              const asked = body.includes("@bugbot") || body.includes("/bugbot");
+              if (asked && trusted.has(association)) {
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.issue.number,
+                });
+                remember(pr);
+                proceed = proceed && sameRepo;
+              }
+            } else if (eventName === "pull_request_review_comment") {
+              const association = context.payload.comment && context.payload.comment.author_association;
+              if (trusted.has(association)) {
+                remember(context.payload.pull_request);
+                proceed = proceed && sameRepo;
+              }
+            }
+
+            if (!/^[0-9]+$/.test(number)) {
+              proceed = false;
+            }
+
+            core.setOutput("proceed", proceed ? "true" : "false");
+            core.setOutput("same_repo", sameRepo ? "true" : "false");
+            core.setOutput("number", proceed ? number : "");
+            core.setOutput("sha", proceed ? sha : "");
+
   bugbot-analyze:
     name: Bugbot Analysis
+    needs: authorize
+    if: needs.authorize.outputs.proceed == 'true'
     runs-on: ubuntu-latest
-    
-    if: |
-      (github.event_name == 'pull_request') ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && 
-       (contains(github.event.comment.body, '@bugbot') || contains(github.event.comment.body, '/bugbot'))) ||
-      (github.event_name == 'pull_request_review_comment')
-    
+    permissions:
+      contents: read
     outputs:
-      pr_number: ${{ steps.pr.outputs.number }}
-      has_issues: ${{ steps.test.outputs.exit_code != '0' || steps.lint.outputs.exit_code != '0' }}
-      
+      pr_number: ${{ steps.identity.outputs.number }}
+      has_issues: ${{ steps.finish.outputs.has_issues }}
     steps:
-    - name: Get PR information
-      id: pr
-      uses: actions/github-script@v7
-      with:
-        script: |
-          let prNumber, prData;
-          
-          if (context.eventName === 'pull_request') {
-            prNumber = context.payload.pull_request.number;
-            prData = context.payload.pull_request;
-          } else if (context.eventName === 'issue_comment') {
-            prNumber = context.payload.issue.number;
-            const { data } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber
-            });
-            prData = data;
-          } else if (context.eventName === 'pull_request_review_comment') {
-            prNumber = context.payload.pull_request.number;
-            prData = context.payload.pull_request;
-          }
-          
-          core.setOutput('number', prNumber);
-          core.setOutput('sha', prData.head.sha);
-          core.setOutput('ref', prData.head.ref);
-          core.setOutput('repo', prData.head.repo.full_name);
-    
-    - name: Checkout PR branch
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ steps.pr.outputs.sha }}
-        fetch-depth: 0
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
-        cache: 'pip'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        python -m spacy download en_core_web_sm
-    
-    - name: Run tests
-      id: test
-      continue-on-error: true
-      run: |
-        set +e
-        python -m unittest discover -s tests -v 2>&1 | tee test_output.txt
-        TEST_EXIT_CODE=${PIPESTATUS[0]}
-        echo "exit_code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
-        
-        if [ $TEST_EXIT_CODE -ne 0 ]; then
-          echo "⚠️ Tests failed with exit code $TEST_EXIT_CODE"
-          echo "## Test Failures" > test_summary.md
-          echo "\`\`\`" >> test_summary.md
-          tail -100 test_output.txt >> test_summary.md
-          echo "\`\`\`" >> test_summary.md
-        else
-          echo "✅ All tests passed"
-          echo "## All Tests Passed ✅" > test_summary.md
-        fi
-    
-    - name: Run Python syntax check
-      id: lint
-      continue-on-error: true
-      run: |
-        set +e
-        echo "Checking Python syntax..."
-        find . -name "*.py" -not -path "./.venv/*" -not -path "./tests/*" | while read file; do
-          python -m py_compile "$file" 2>&1
-        done | tee lint_output.txt
-        LINT_EXIT_CODE=${PIPESTATUS[0]}
-        echo "exit_code=$LINT_EXIT_CODE" >> $GITHUB_OUTPUT
-    
-    - name: Generate Bugbot report
-      id: report
-      run: |
-        cat > bugbot_report.md << 'EOFMARKER'
-        # 🐛 Bugbot Analysis Report
-        
-        EOFMARKER
-        
-        if [ "${{ steps.test.outputs.exit_code }}" != "0" ] || [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
-          cat >> bugbot_report.md << 'EOFMARKER'
-        ## Issues Detected
-        
-        EOFMARKER
-          
-          if [ "${{ steps.test.outputs.exit_code }}" != "0" ]; then
-            cat >> bugbot_report.md << 'EOFMARKER'
-        ### ❌ Test Failures
-        
-        Some tests are failing. Review the details below.
-        
-        EOFMARKER
-            cat test_summary.md >> bugbot_report.md
+      - name: Record pull request identity
+        id: identity
+        env:
+          PR_NUMBER: ${{ needs.authorize.outputs.number }}
+        run: |
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*) echo "Unexpected pull request number" >&2; exit 1 ;;
+          esac
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Validate commit SHA
+        env:
+          HEAD_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          case "$HEAD_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "Refusing to check out an unexpected ref" >&2; exit 1 ;;
+          esac
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Run tests
+        id: test
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+        run: |
+          set +e
+          python -m unittest discover -s tests -v > test_output.txt 2>&1
+          TEST_EXIT_CODE=$?
+          set -e
+          if [ "$TEST_EXIT_CODE" -ne 0 ]; then
+            TEST_EXIT_CODE=1
+            {
+              echo "## Test Failures"
+              echo '```'
+              tail -100 test_output.txt
+              echo '```'
+            } > test_summary.md
+          else
+            echo "## All Tests Passed" > test_summary.md
           fi
-          
-          if [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
-            cat >> bugbot_report.md << 'EOFMARKER'
-        
-        ### ⚠️ Syntax Issues
-        
-        Python syntax errors detected.
-        
-        EOFMARKER
+          echo "exit_code=$TEST_EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run Python syntax check
+        id: lint
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+        run: |
+          set +e
+          find . -name "*.py" -not -path "./.venv/*" -not -path "./.git/*" -print0 \
+            | xargs -0 python -m py_compile > lint_output.txt 2>&1
+          LINT_EXIT_CODE=$?
+          set -e
+          if [ "$LINT_EXIT_CODE" -ne 0 ]; then
+            LINT_EXIT_CODE=1
           fi
-          
-          cat >> bugbot_report.md << 'EOFMARKER'
-        
-        ## 🔧 Auto-Fix Available
-        
-        Bugbot can automatically attempt to fix these issues. To trigger auto-fix:
-        
-        1. **Manual trigger**: Comment `/bugbot fix` on this PR
-        2. **Automatic**: Fixes will be attempted automatically if configured
-        
-        ## Next Steps
-        
-        - Review the test output above
-        - If auto-fix is enabled, Bugbot will push commits to this branch
-        - You can also fix manually and push updates
-        
-        ---
-        *Powered by Cursor Bugbot* 🤖
-        EOFMARKER
-        else
-          cat >> bugbot_report.md << 'EOFMARKER'
-        ## ✅ All Checks Passed
-        
-        No issues detected! The code looks good.
-        
-        - Tests: ✅ Passing
-        - Syntax: ✅ Valid
-        
-        Great work! 🎉
-        EOFMARKER
-        fi
-    
-    - name: Post Bugbot report
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const report = fs.readFileSync('bugbot_report.md', 'utf8');
-          
-          // Find existing Bugbot comments
-          const { data: comments } = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: ${{ steps.pr.outputs.number }}
-          });
-          
-          const bugbotComment = comments.find(comment => 
-            comment.user.login === 'github-actions[bot]' && 
-            comment.body.includes('🐛 Bugbot Analysis Report')
-          );
-          
-          if (bugbotComment) {
-            // Update existing comment
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: bugbotComment.id,
-              body: report
-            });
-          } else {
-            // Create new comment
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: ${{ steps.pr.outputs.number }},
-              body: report
-            });
-          }
-    
-    - name: Upload artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: bugbot-analysis
-        path: |
-          test_output.txt
-          lint_output.txt
-          bugbot_report.md
-        retention-days: 7
+          echo "exit_code=$LINT_EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Bugbot report
+        id: report
+        env:
+          TEST_EXIT: ${{ steps.test.outputs.exit_code }}
+          LINT_EXIT: ${{ steps.lint.outputs.exit_code }}
+        run: |
+          case "$TEST_EXIT" in
+            0|1) ;;
+            *) TEST_EXIT=1 ;;
+          esac
+          case "$LINT_EXIT" in
+            0|1) ;;
+            *) LINT_EXIT=1 ;;
+          esac
+          {
+            echo "# Bugbot Analysis Report"
+            echo
+            if [ "$TEST_EXIT" != "0" ] || [ "$LINT_EXIT" != "0" ]; then
+              echo "## Issues Detected"
+              echo
+              if [ "$TEST_EXIT" != "0" ]; then
+                echo "### Test failures"
+                echo
+                cat test_summary.md
+              fi
+              if [ "$LINT_EXIT" != "0" ]; then
+                echo
+                echo "### Syntax issues"
+                echo
+                echo "Python syntax errors were detected. See the lint artifact."
+              fi
+              echo
+              echo "Automatic code changes are not applied by this workflow."
+            else
+              echo "## All checks passed"
+              echo
+              echo "Tests passed and the Python syntax check passed."
+            fi
+          } > bugbot_report.md
+
+      - name: Record outcome
+        id: finish
+        env:
+          TEST_EXIT: ${{ steps.test.outputs.exit_code }}
+          LINT_EXIT: ${{ steps.lint.outputs.exit_code }}
+        run: |
+          if [ "$TEST_EXIT" != "0" ] || [ "$LINT_EXIT" != "0" ]; then
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugbot-analysis
+          path: |
+            test_output.txt
+            lint_output.txt
+            bugbot_report.md
+            test_summary.md
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Fail the check when tests or lint failed
+        if: always() && steps.finish.outputs.has_issues == 'true'
+        run: exit 1
+
+  report:
+    name: Post Bugbot report
+    needs: [authorize, bugbot-analyze]
+    if: always() && needs.authorize.outputs.proceed == 'true' && needs.authorize.outputs.same_repo == 'true' && needs.bugbot-analyze.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: bugbot-analysis
+        continue-on-error: true
+
+      - name: Post Bugbot report
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.authorize.outputs.number }}
+        with:
+          script: |
+            const fs = require("fs");
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(prNumber)) {
+              core.setFailed("Unexpected pull request number");
+              return;
+            }
+            let report = "## Bugbot Analysis Report\n\nThe analysis artifact was not available.";
+            try {
+              report = fs.readFileSync("bugbot_report.md", "utf8").slice(0, 60000);
+            } catch (error) {
+              core.warning(`Report file missing: ${error.message}`);
+            }
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+              });
+              const existing = comments.find((comment) =>
+                comment.user && comment.body && comment.body.includes("# Bugbot Analysis Report")
+              );
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: report,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: report,
+                });
+              }
+            } catch (error) {
+              core.warning(`Unable to post the Bugbot report: ${error.message}`);
+            }
 
   cursor-autofix:
     name: Cursor Auto-Fix
-    needs: bugbot-analyze
-    runs-on: ubuntu-latest
+    needs: [authorize, bugbot-analyze]
     if: |
+      always() &&
+      needs.authorize.outputs.same_repo == 'true' &&
       needs.bugbot-analyze.outputs.has_issues == 'true' &&
       (github.event_name == 'pull_request' ||
        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/bugbot fix')))
-    
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
-    - name: Post auto-fix starting message
-      uses: actions/github-script@v7
-      with:
-        script: |
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: ${{ needs.bugbot-analyze.outputs.pr_number }},
-            body: '🔧 **Bugbot Auto-Fix Starting**\n\nAttempting to automatically fix detected issues...\n\n_This may take a few minutes._'
-          });
-    
-    - name: Trigger Cursor Cloud Agent
-      uses: actions/github-script@v7
-      with:
-        script: |
-          // Note: This is a placeholder for Cursor Cloud Agent integration
-          // In a production setup, this would trigger a Cursor Cloud Agent
-          // to analyze the PR and push fixes
-          
-          const message = `## 🤖 Cursor Auto-Fix
-          
-          To enable full auto-fix capabilities with Cursor Cloud Agents:
-          
-          1. **Install Cursor Cloud Agent** in your repository
-          2. **Configure secrets** in repository settings:
-             - Add \`CURSOR_API_KEY\` for authentication
-          3. **Enable Auto-Fix** in Cursor settings
-          
-          ### Manual Fix Instructions
-          
-          Until auto-fix is configured, you can manually run:
-          
-          \`\`\`bash
-          # Run tests locally
-          python -m unittest discover -s tests -v
-          
-          # Use the fix_classifier.py tool if available
-          ./fix_classifier.py
-          \`\`\`
-          
-          For more information, visit [Cursor Documentation](https://cursor.com/docs).`;
-          
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: ${{ needs.bugbot-analyze.outputs.pr_number }},
-            body: message
-          });
+      - name: Explain that auto-fix does not execute pull request code
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.authorize.outputs.number }}
+        with:
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(prNumber)) {
+              core.setFailed("Unexpected pull request number");
+              return;
+            }
+            const message = [
+              "## Cursor auto-fix",
+              "",
+              "This workflow no longer checks out or runs pull request code with a write token.",
+              "Fix the failing tests locally and push the change:",
+              "",
+              "```bash",
+              "python -m unittest discover -s tests -v",
+              "```",
+              "",
+              "See [Cursor documentation](https://cursor.com/docs) for Cloud Agent setup.",
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: message,
+            });
