@@ -19,12 +19,9 @@ ones Duckling ships (``en_AU``, ``en_BZ``, ``en_CA``, ``en_GB``, ``en_IE``,
 Any other English tag falls back to ``en_GB``.
 """
 
-import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
-
-import requests
 
 try:  # Python 3.9+
     from zoneinfo import ZoneInfo
@@ -33,11 +30,14 @@ except ImportError:  # pragma: no cover - fallback for older interpreters
 
 # Reuse the singleton spaCy pipeline loaded by intent.py so we do not load the
 # model twice inside the same process.
-from intent import nlp
+from intent import nlp, post_duckling
 
-# Duckling runs on the EC2 host; start.sh exports DUCKLING_URL with the host
-# private IP. Fall back to localhost for local development.
-DUCKLING_URL = os.environ.get("DUCKLING_URL", "http://127.0.0.1:8000/parse")
+# IANA names only. Rejects path traversal ("../usr/share/zoneinfo") before
+# ZoneInfo or Duckling ever see the caller-supplied timezone.
+_TIMEZONE_NAME = re.compile(
+    r"^[A-Za-z0-9_][A-Za-z0-9_+-]{0,63}"
+    r"(?:/[A-Za-z0-9_][A-Za-z0-9_+-]{0,63}){0,2}$"
+)
 
 # Engine identity — stored on every response so past decisions can be reproduced.
 ENGINE_VERSION = "1.0.0"
@@ -133,6 +133,18 @@ def resolve_duckling_locale(locale):
 # ---------------------------------------------------------------------------
 
 
+def sanitize_timezone(tz_name):
+    """Return an IANA timezone name, or None when the value is not one."""
+    if not isinstance(tz_name, str):
+        return None
+    candidate = tz_name.strip()
+    if not candidate or not _TIMEZONE_NAME.match(candidate):
+        return None
+    if ".." in candidate or "\\" in candidate or candidate.startswith(("/", ".")):
+        return None
+    return candidate
+
+
 def duckling_parse(text, reftime_ms=None, tz=None, locale="en_GB"):
     """Call Duckling with an explicit reference time and timezone.
 
@@ -148,12 +160,16 @@ def duckling_parse(text, reftime_ms=None, tz=None, locale="en_GB"):
     }
     if reftime_ms is not None:
         data["reftime"] = str(int(reftime_ms))
-    if tz:
-        data["tz"] = tz
+    safe_tz = sanitize_timezone(tz)
+    if safe_tz:
+        data["tz"] = safe_tz
 
-    r = requests.post(DUCKLING_URL, data=data, timeout=3)
+    r = post_duckling(data, timeout=3)
     r.raise_for_status()
-    return r.json()
+    body = r.json()
+    if not isinstance(body, list):
+        raise ValueError("Duckling returned an unexpected payload")
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -175,9 +191,10 @@ def parse_timestamp(value):
 
 def get_zone(tz_name):
     """Return a tzinfo for an IANA name, defaulting to UTC when unavailable."""
-    if tz_name and ZoneInfo is not None:
+    safe = sanitize_timezone(tz_name)
+    if safe and ZoneInfo is not None:
         try:
-            return ZoneInfo(tz_name)
+            return ZoneInfo(safe)
         except Exception:
             return dt_timezone.utc
     return dt_timezone.utc
@@ -192,8 +209,13 @@ def to_epoch_ms(dt):
 
 def parse_hhmm(value, fallback_hour, fallback_minute):
     try:
-        hh, mm = str(value).split(":")
-        return int(hh), int(mm)
+        hh_text, mm_text = str(value).split(":")
+        if len(hh_text) > 2 or len(mm_text) > 2:
+            raise ValueError("clock component is too long")
+        hour, minute = int(hh_text), int(mm_text)
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError("clock component is out of range")
+        return hour, minute
     except Exception:
         return fallback_hour, fallback_minute
 
@@ -337,7 +359,7 @@ def parse_messages(request, default_timezone):
                 "id": raw.get("id") or f"msg_{idx + 1:03d}",
                 "speaker_id": speaker_id,
                 "speaker_name": speaker_name,
-                "timezone": speaker_tz or default_timezone,
+                "timezone": sanitize_timezone(speaker_tz) or default_timezone,
                 "ts": ts,
                 "original": original,
                 "matching": build_matching_form(original),
@@ -947,7 +969,7 @@ def analyze(request):
     locale = options.get("locale")
     duckling_locale = resolve_duckling_locale(locale)  # raises for non-English
 
-    default_timezone = options.get("default_timezone") or DEFAULT_TIMEZONE
+    default_timezone = sanitize_timezone(options.get("default_timezone")) or DEFAULT_TIMEZONE
     minimum_confidence = options.get("minimum_confidence", DEFAULT_MINIMUM_CONFIDENCE)
     include_low_confidence = bool(options.get("include_low_confidence", False))
     conversation_id = request.get("conversation_id")
