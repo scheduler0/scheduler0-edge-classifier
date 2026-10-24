@@ -1,17 +1,18 @@
 name: Bugbot with Cursor Cloud Agent
 
-# This is an advanced workflow that integrates with Cursor Cloud Agent
-# for sophisticated auto-fixing capabilities
+# Manual analysis of a pull request. The dispatched workflow still checks out
+# the pull request head, so that job is read-only. Branch names are passed
+# through the environment and never interpolated into a shell script.
 
 on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to analyze and fix'
+        description: "PR number to analyze and fix"
         required: true
         type: number
       fix_mode:
-        description: 'Fix mode'
+        description: "Fix mode"
         required: true
         type: choice
         options:
@@ -21,195 +22,244 @@ on:
         default: analyze_only
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  statuses: write
+  contents: read
 
 jobs:
-  cursor-agent-fix:
-    name: Cursor Cloud Agent Analysis
+  prepare:
+    name: Load pull request metadata
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.pr.outputs.sha }}
+      base: ${{ steps.pr.outputs.base }}
+      branch: ${{ steps.pr.outputs.branch }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
     steps:
-    - name: Get PR Details
-      id: pr
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const { data: pr } = await github.rest.pulls.get({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            pull_number: ${{ inputs.pr_number }}
-          });
-          
-          core.setOutput('branch', pr.head.ref);
-          core.setOutput('sha', pr.head.sha);
-          core.setOutput('base', pr.base.ref);
-          
-          return pr;
-    
-    - name: Checkout PR Branch
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ steps.pr.outputs.sha }}
-        fetch-depth: 0
-    
-    - name: Fetch base branch
-      run: |
-        git fetch origin ${{ steps.pr.outputs.base }}
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
-        cache: 'pip'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        python -m spacy download en_core_web_sm
-    
-    - name: Run tests and collect failures
-      id: tests
-      continue-on-error: true
-      run: |
-        set +e
-        python -m unittest discover -s tests -v 2>&1 | tee test_results.txt
-        TEST_EXIT=$?
-        echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
-        
-        # Parse test failures
-        if [ $TEST_EXIT -ne 0 ]; then
-          echo "failures_found=true" >> $GITHUB_OUTPUT
-          grep -E "^(FAIL|ERROR):" test_results.txt > failures_summary.txt || true
-          echo "failure_count=$(wc -l < failures_summary.txt)" >> $GITHUB_OUTPUT
-        else
-          echo "failures_found=false" >> $GITHUB_OUTPUT
-          echo "failure_count=0" >> $GITHUB_OUTPUT
-        fi
-    
-    - name: Generate diff analysis
-      if: steps.tests.outputs.failures_found == 'true'
-      run: |
-        # Get the diff for context
-        git diff origin/${{ steps.pr.outputs.base }}..HEAD > pr_diff.txt
-        
-        # Create a structured analysis file
-        cat > analysis_context.json << EOF
-        {
-          "pr_number": ${{ inputs.pr_number }},
-          "branch": "${{ steps.pr.outputs.branch }}",
-          "base_branch": "${{ steps.pr.outputs.base }}",
-          "test_failures": $(cat failures_summary.txt | jq -R . | jq -s .),
-          "fix_mode": "${{ inputs.fix_mode }}",
-          "repository": "${{ github.repository }}"
-        }
-        EOF
-    
-    - name: Post analysis to PR
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const testResults = fs.readFileSync('test_results.txt', 'utf8');
-          const failuresFound = '${{ steps.tests.outputs.failures_found }}' === 'true';
-          const failureCount = '${{ steps.tests.outputs.failure_count }}';
-          const fixMode = '${{ inputs.fix_mode }}';
-          
-          let body = '## 🤖 Cursor Cloud Agent Analysis\n\n';
-          
-          if (!failuresFound) {
-            body += '✅ **All tests passing!** No issues detected.\n';
-          } else {
-            body += `⚠️ **Found ${failureCount} test failure(s)**\n\n`;
-            body += '### Test Results\n\n';
-            body += '<details><summary>View test output</summary>\n\n';
-            body += '```\n' + testResults.slice(-3000) + '\n```\n';
-            body += '</details>\n\n';
-            
-            if (fixMode === 'analyze_only') {
-              body += '### Analysis Mode\n\n';
-              body += 'This run analyzed the PR but did not attempt fixes.\n\n';
-              body += 'To trigger auto-fix, run this workflow again with `fix_mode: auto_fix`.\n';
-            } else if (fixMode === 'suggest_fixes') {
-              body += '### Suggested Fixes\n\n';
-              body += 'Based on the test failures, consider:\n\n';
-              body += '1. Review the test expectations\n';
-              body += '2. Check if code changes match test assertions\n';
-              body += '3. Update logic in the affected modules\n';
-            } else if (fixMode === 'auto_fix') {
-              body += '### Auto-Fix Mode\n\n';
-              body += '⚙️ Auto-fix is enabled. To implement auto-fix:\n\n';
-              body += '1. Configure `CURSOR_API_KEY` in repository secrets\n';
-              body += '2. Ensure Cursor Cloud Agent access is enabled\n';
-              body += '3. See [BUGBOT_SETUP.md](BUGBOT_SETUP.md) for details\n\n';
-              body += 'For now, please fix manually or use the suggestions above.\n';
+      - name: Get PR Details
+        id: pr
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            const pullNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(pullNumber) || pullNumber < 1) {
+              core.setFailed("Pull request number must be a positive integer");
+              return;
             }
-          }
-          
-          body += '\n---\n';
-          body += '_Triggered manually via workflow dispatch_\n';
-          
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: ${{ inputs.pr_number }},
-            body: body
-          });
-    
-    - name: Prepare Cursor Agent Context (if fix mode enabled)
-      if: |
-        steps.tests.outputs.failures_found == 'true' && 
-        inputs.fix_mode == 'auto_fix'
-      run: |
-        # This would prepare the context for Cursor Cloud Agent
-        # In a full implementation, this would:
-        # 1. Call Cursor Cloud Agent API
-        # 2. Pass test failures and code context
-        # 3. Receive generated fixes
-        # 4. Apply and commit the fixes
-        
-        echo "📝 Preparing context for Cursor Cloud Agent..."
-        echo "Test failures: ${{ steps.tests.outputs.failure_count }}"
-        echo "PR: #${{ inputs.pr_number }}"
-        echo ""
-        echo "To enable full Cursor integration:"
-        echo "1. Add CURSOR_API_KEY to repository secrets"
-        echo "2. Configure Cursor Cloud Agent permissions"
-        echo "3. See BUGBOT_SETUP.md for complete instructions"
-    
-    - name: Upload analysis artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: cursor-agent-analysis-pr-${{ inputs.pr_number }}
-        path: |
-          test_results.txt
-          failures_summary.txt
-          pr_diff.txt
-          analysis_context.json
-        retention-days: 30
-    
-    - name: Summary
-      if: always()
-      run: |
-        echo "## 📊 Cursor Cloud Agent Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **PR**: #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Branch**: ${{ steps.pr.outputs.branch }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Fix Mode**: ${{ inputs.fix_mode }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Test Result**: ${{ steps.tests.outputs.exit_code == '0' && '✅ Passing' || '❌ Failures' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Failures Found**: ${{ steps.tests.outputs.failure_count }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ steps.tests.outputs.exit_code }}" != "0" ]; then
-          echo "### ⚠️ Action Required" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Test failures were detected. See the PR comment for details." >> $GITHUB_STEP_SUMMARY
-        else
-          echo "### ✅ All Clear" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "No issues detected in this PR." >> $GITHUB_STEP_SUMMARY
-        fi
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber,
+            });
+            const sha = pr.head && pr.head.sha;
+            const refOk = /^[A-Za-z0-9][A-Za-z0-9._/+-]{0,200}$/;
+            if (!/^[0-9a-f]{40}$/.test(sha || "")) {
+              core.setFailed("Pull request head is not a commit SHA");
+              return;
+            }
+            if (!refOk.test(pr.base.ref || "") || !refOk.test(pr.head.ref || "")) {
+              core.setFailed("Refusing an unexpected git ref");
+              return;
+            }
+            const sameRepo = pr.head.repo && pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+            core.setOutput("sha", sha);
+            core.setOutput("base", pr.base.ref);
+            core.setOutput("branch", pr.head.ref);
+            core.setOutput("same_repo", sameRepo ? "true" : "false");
+            if (!sameRepo) {
+              core.setFailed("Refusing to execute a fork pull request head from a privileged workflow");
+            }
+
+  test:
+    name: Test pull request head
+    needs: prepare
+    if: needs.prepare.outputs.same_repo == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      exit_code: ${{ steps.tests.outputs.exit_code }}
+      failures_found: ${{ steps.tests.outputs.failures_found }}
+      failure_count: ${{ steps.tests.outputs.failure_count }}
+    steps:
+      - name: Checkout PR Branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        env:
+          BASE_REF: ${{ needs.prepare.outputs.base }}
+        run: |
+          git fetch origin "$BASE_REF"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Run tests and collect failures
+        id: tests
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+        run: |
+          set +e
+          python -m unittest discover -s tests -v > test_results.txt 2>&1
+          TEST_EXIT=$?
+          set -e
+          if [ "$TEST_EXIT" -ne 0 ]; then
+            TEST_EXIT=1
+            echo "failures_found=true" >> "$GITHUB_OUTPUT"
+            grep -E "^(FAIL|ERROR):" test_results.txt > failures_summary.txt || true
+            COUNT=$(grep -c . failures_summary.txt || true)
+            case "$COUNT" in
+              ''|*[!0-9]*) COUNT=0 ;;
+            esac
+            echo "failure_count=$COUNT" >> "$GITHUB_OUTPUT"
+          else
+            : > failures_summary.txt
+            echo "failures_found=false" >> "$GITHUB_OUTPUT"
+            echo "failure_count=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "exit_code=$TEST_EXIT" >> "$GITHUB_OUTPUT"
+          cat test_results.txt
+
+      - name: Generate diff analysis
+        if: steps.tests.outputs.failures_found == 'true'
+        env:
+          BASE_REF: ${{ needs.prepare.outputs.base }}
+          HEAD_BRANCH: ${{ needs.prepare.outputs.branch }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FIX_MODE: ${{ inputs.fix_mode }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          git diff "origin/${BASE_REF}..HEAD" > pr_diff.txt
+          jq -n \
+            --arg pr_number "$PR_NUMBER" \
+            --arg branch "$HEAD_BRANCH" \
+            --arg base_branch "$BASE_REF" \
+            --arg fix_mode "$FIX_MODE" \
+            --arg repository "$REPOSITORY" \
+            --rawfile test_failures failures_summary.txt \
+            '{pr_number: $pr_number, branch: $branch, base_branch: $base_branch, test_failures: $test_failures, fix_mode: $fix_mode, repository: $repository}' \
+            > analysis_context.json
+
+      - name: Upload analysis artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cursor-agent-analysis
+          path: |
+            test_results.txt
+            failures_summary.txt
+            pr_diff.txt
+            analysis_context.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  report:
+    name: Post analysis to PR
+    needs: [prepare, test]
+    if: always() && needs.prepare.outputs.same_repo == 'true' && needs.test.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Download analysis
+        uses: actions/download-artifact@v4
+        with:
+          name: cursor-agent-analysis
+        continue-on-error: true
+
+      - name: Post analysis to PR
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FAILURES_FOUND: ${{ needs.test.outputs.failures_found }}
+          FAILURE_COUNT: ${{ needs.test.outputs.failure_count }}
+          FIX_MODE: ${{ inputs.fix_mode }}
+        with:
+          script: |
+            const fs = require("fs");
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(prNumber)) {
+              core.setFailed("Unexpected pull request number");
+              return;
+            }
+            const failuresFound = process.env.FAILURES_FOUND === "true";
+            const failureCount = /^[0-9]+$/.test(process.env.FAILURE_COUNT || "")
+              ? process.env.FAILURE_COUNT
+              : "unknown";
+            const fixMode = ["analyze_only", "auto_fix", "suggest_fixes"].includes(process.env.FIX_MODE)
+              ? process.env.FIX_MODE
+              : "analyze_only";
+            let testResults = "(output unavailable)";
+            try {
+              testResults = fs.readFileSync("test_results.txt", "utf8").slice(-3000);
+            } catch (error) {
+              core.warning(error.message);
+            }
+
+            let body = "## Cursor Cloud Agent Analysis\n\n";
+            if (!failuresFound) {
+              body += "All tests passed.\n";
+            } else {
+              body += `Found ${failureCount} test failure line(s).\n\n`;
+              body += "### Test results\n\n";
+              body += "<details><summary>View test output</summary>\n\n";
+              body += "```\n" + testResults + "\n```\n";
+              body += "</details>\n\n";
+              if (fixMode === "analyze_only") {
+                body += "This run analyzed the pull request and did not change code.\n";
+              } else if (fixMode === "suggest_fixes") {
+                body += "Review the failing assertions and update the classifier logic.\n";
+              } else {
+                body += "Auto-fix does not run pull request code with a write token.\n";
+                body += "Apply the fix locally, then push it to the branch.\n";
+              }
+            }
+            body += "\n---\nTriggered manually via workflow dispatch.\n";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
+
+      - name: Summary
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_BRANCH: ${{ needs.prepare.outputs.branch }}
+          FIX_MODE: ${{ inputs.fix_mode }}
+          TEST_EXIT: ${{ needs.test.outputs.exit_code }}
+          FAILURE_COUNT: ${{ needs.test.outputs.failure_count }}
+        run: |
+          {
+            printf '%s\n' "## Cursor Cloud Agent Summary"
+            printf '\n'
+            printf '%s\n' "- PR: #${PR_NUMBER}"
+            printf '%s\n' "- Branch: ${HEAD_BRANCH}"
+            printf '%s\n' "- Fix mode: ${FIX_MODE}"
+            printf '%s\n' "- Test exit: ${TEST_EXIT}"
+            printf '%s\n' "- Failure lines: ${FAILURE_COUNT}"
+          } >> "$GITHUB_STEP_SUMMARY"
