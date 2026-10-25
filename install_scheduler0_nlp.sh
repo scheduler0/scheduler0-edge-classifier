@@ -15,6 +15,10 @@
 #                                                   (default: /opt/duckling)
 #   LOG_FILE      – log destination (--ci mode)     (default: /var/log/scheduler0-intent-classifier-bootstrap.log)
 #   BOOTSTRAP_MARKER – file written on success      (default: /var/lib/scheduler0-intent-classifier/bootstrap-complete)
+#
+# Stack and Duckling are pinned. The Haskell installer is a release tarball
+# checked with SHA-256. Duckling is fetched at DUCKLING_REV rather than
+# whatever master happens to be.
 
 set -Eeuo pipefail
 # HOME is not set in the EC2 user-data environment; default to /root so the
@@ -32,6 +36,10 @@ DUCKLING_PORT="${DUCKLING_PORT:-8000}"
 DUCKLING_EXPORT_DIR="${DUCKLING_EXPORT_DIR:-/opt/duckling}"
 LOG_FILE="${LOG_FILE:-/var/log/scheduler0-intent-classifier-bootstrap.log}"
 BOOTSTRAP_MARKER="${BOOTSTRAP_MARKER:-/var/lib/scheduler0-intent-classifier/bootstrap-complete}"
+# facebook/duckling main at the time this pin was recorded.
+DUCKLING_REV="59a13ff87b1aa8be6b93d387244f8636b26185c5"
+STACK_VERSION="3.11.1"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if $CI_MODE; then
   mkdir -p "$(dirname "$LOG_FILE")"
@@ -78,24 +86,56 @@ sudo "$PM" install -y \
 # full curl package; skip it — curl-minimal provides the curl command we need.
 # python3-pip is not reliably in the AL2023 dnf repos; bootstrap via ensurepip.
 python3 -m ensurepip --upgrade
-python3 -m pip install --upgrade pip --no-cache-dir
+
+install_pinned_stack() {
+  local arch sha tmp name
+  case "$(uname -m)" in
+    x86_64|amd64)
+      arch="linux-x86_64"
+      sha="1fda71e657cd8d355625cc66b61b352699279dfee2664c014a392163bd19a952"
+      ;;
+    aarch64|arm64)
+      arch="linux-aarch64"
+      sha="1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0"
+      ;;
+    *)
+      echo "ERROR: no pinned Stack ${STACK_VERSION} build for $(uname -m)"
+      exit 1
+      ;;
+  esac
+  name="stack-${STACK_VERSION}-${arch}"
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '${tmp}'" RETURN
+  echo "==> Downloading Stack ${STACK_VERSION} (${arch})"
+  curl -fsSL \
+    "https://github.com/commercialhaskell/stack/releases/download/v${STACK_VERSION}/${name}.tar.gz" \
+    -o "${tmp}/stack.tar.gz"
+  echo "${sha}  ${tmp}/stack.tar.gz" | sha256sum -c -
+  tar -xzf "${tmp}/stack.tar.gz" -C "${tmp}"
+  if [ ! -f "${tmp}/${name}/stack" ]; then
+    echo "ERROR: Stack archive did not contain ${name}/stack"
+    exit 1
+  fi
+  sudo install -m 0755 "${tmp}/${name}/stack" /usr/local/bin/stack
+}
 
 echo "==> Installing Haskell Stack if missing"
 if ! command -v stack >/dev/null 2>&1; then
-  curl -sSL https://get.haskellstack.org/ | sh
+  install_pinned_stack
 fi
 
 echo "==> Stack version"
 stack --version
 
-echo "==> Cloning Duckling"
+echo "==> Cloning Duckling at ${DUCKLING_REV}"
 mkdir -p "$HOME/workspace"
 
 if [ ! -d "$DUCKLING_DIR/.git" ]; then
   git clone https://github.com/facebook/duckling.git "$DUCKLING_DIR"
-else
-  echo "Duckling repo already exists at $DUCKLING_DIR"
 fi
+git -C "$DUCKLING_DIR" fetch --depth 1 origin "$DUCKLING_REV"
+git -C "$DUCKLING_DIR" checkout --detach "$DUCKLING_REV"
 
 echo "==> Building Duckling (this takes 30–90 minutes on a cold instance)"
 cd "$DUCKLING_DIR"
@@ -108,7 +148,17 @@ python3 -m venv "$NLP_DIR"
 echo "==> Installing Python NLP dependencies"
 source "$NLP_DIR/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install fastapi 'uvicorn[standard]' requests 'spacy>=3.7.0,<3.8.0'
+if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
+  python -m pip install -r "${SCRIPT_DIR}/requirements.txt"
+else
+  # The bootstrap script is sometimes downloaded on its own. Keep the same
+  # lower bounds as requirements.txt so this path cannot float to an older set.
+  python -m pip install \
+    'fastapi>=0.111.0' \
+    'uvicorn[standard]>=0.30.0' \
+    'requests>=2.32.0' \
+    'spacy>=3.7.0,<3.8.0'
+fi
 python -m spacy download en_core_web_sm
 
 mkdir -p "$NLP_DIR/app"

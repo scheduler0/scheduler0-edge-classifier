@@ -11,6 +11,11 @@ on:
         description: "Short environment name used to derive resource names (staging or production)"
         required: true
         type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
 
 jobs:
   deploy:
@@ -27,11 +32,19 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Derive ECS resource names
       run: |
         set -euo pipefail
+        case "$ENV_NAME" in
+          staging|production) ;;
+          *) echo "ENV_NAME must be staging or production" >&2; exit 1 ;;
+        esac
+        if ! [[ "$AWS_REGION" =~ ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$ ]]; then
+          echo "AWS_REGION is not a region name" >&2
+          exit 1
+        fi
         echo "ECR_REPOSITORY=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
         echo "ECS_CLUSTER=${ENV_NAME}_scheduler0_ecs_cluster"                                         >> "$GITHUB_ENV"
         echo "ECS_SERVICE=${ENV_NAME}_scheduler0-intent-classifier-service"                           >> "$GITHUB_ENV"
@@ -39,7 +52,7 @@ jobs:
         echo "CONTAINER_NAME=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -50,11 +63,20 @@ jobs:
       run: |
         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "account_id=${AWS_ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
-        echo "AWS Account ID: ${AWS_ACCOUNT_ID}"
 
     - name: Generate task definition from template
+      env:
+        AWS_ACCOUNT_ID: ${{ steps.aws-account.outputs.account_id }}
       run: |
         set -euo pipefail
+        case "$AWS_ACCOUNT_ID" in
+          [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+          *) echo "Unexpected AWS account id" >&2; exit 1 ;;
+        esac
+        if ! [[ "$AWS_REGION" =~ ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$ ]]; then
+          echo "AWS_REGION is not a region name" >&2
+          exit 1
+        fi
         TEMPLATE_FILE="${ENV_NAME}-scheduler0-intent-classifier-ecs-task-definition.template.json"
         OUTPUT_FILE="${ECS_TASK_DEFINITION}"
         
@@ -64,19 +86,18 @@ jobs:
         fi
         
         echo "Generating ${OUTPUT_FILE} from ${TEMPLATE_FILE}"
-        sed -e "s|<AWS_ACCOUNT_ID>|${{ steps.aws-account.outputs.account_id }}|g" \
+        sed -e "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" \
             -e "s|<AWS_REGION>|${AWS_REGION}|g" \
             "${TEMPLATE_FILE}" > "${OUTPUT_FILE}"
         
         echo "Task definition generated successfully"
-        cat "${OUTPUT_FILE}"
 
     # Runtime config comes from SSM / the task definition (Doppler syncs SSM
     # natively); the deploy needs nothing from Doppler, so the CLI is not installed.
 
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+      uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
@@ -97,7 +118,7 @@ jobs:
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1
       with:
         task-definition: ${{ env.ECS_TASK_DEFINITION }}
         container-name: ${{ env.CONTAINER_NAME }}
