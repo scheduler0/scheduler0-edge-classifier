@@ -1,6 +1,10 @@
+import ipaddress
 import json
 import os
 import re
+import socket
+import urllib.parse
+
 import requests
 import spacy
 
@@ -735,13 +739,130 @@ def text_looks_french(text):
     return True
 
 
+_BLOCKED_DUCKLING_HOSTS = {
+    "169.254.169.254",
+    "metadata.google.internal",
+    "metadata.internal",
+}
+_AWS_IPV6_IMDS = ipaddress.ip_address("fd00:ec2::254")
+
+
+def _normalize_address(address):
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def _address_is_blocked(address):
+    """Allow only loopback and private addresses Duckling actually uses.
+
+    Link-local is private on some Python versions and still has to be refused:
+    169.254.169.254 is the instance metadata service. Decimal, octal, and hex
+    hosts are not literal IPs to ipaddress, so callers resolve those first.
+    """
+    address = _normalize_address(address)
+    if address == _AWS_IPV6_IMDS or str(address) in _BLOCKED_DUCKLING_HOSTS:
+        return True
+    if address.is_loopback:
+        return False
+    if address.is_unspecified or address.is_multicast or address.is_link_local or address.is_reserved:
+        return True
+    return not address.is_private
+
+
+def _resolved_addresses(host):
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError("DUCKLING_URL host did not resolve") from exc
+    addresses = []
+    for info in infos:
+        try:
+            addresses.append(ipaddress.ip_address(info[4][0]))
+        except ValueError as exc:
+            raise ValueError("DUCKLING_URL host resolved to an unexpected address") from exc
+    if not addresses:
+        raise ValueError("DUCKLING_URL host did not resolve")
+    return addresses
+
+
+def validated_duckling_url(url=None):
+    """Return a Duckling URL that is safe to request.
+
+    Private hosts stay allowed because Duckling runs on the EC2 host. Link-local,
+    public, and metadata addresses are refused so a poisoned DUCKLING_URL cannot
+    reach the instance metadata service or an external host. Hostnames are
+    resolved and every address is checked, which rejects decimal and hex forms
+    that getaddrinfo maps onto the metadata service. Callers must not follow
+    redirects.
+    """
+    candidate = (DUCKLING_URL if url is None else url).strip()
+    if not candidate or any(ch in candidate for ch in "\r\n\t "):
+        raise ValueError("DUCKLING_URL is empty or contains whitespace")
+    parts = urllib.parse.urlsplit(candidate)
+    if parts.scheme not in {"http", "https"}:
+        raise ValueError("DUCKLING_URL must use http or https")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("DUCKLING_URL must not include credentials")
+    host = parts.hostname
+    if not host:
+        raise ValueError("DUCKLING_URL is missing a host")
+    host_key = host.lower().rstrip(".")
+    if host_key in _BLOCKED_DUCKLING_HOSTS or host_key.endswith(".metadata.google.internal"):
+        raise ValueError("DUCKLING_URL host is not allowed")
+    try:
+        addresses = [ipaddress.ip_address(host_key)]
+    except ValueError:
+        addresses = _resolved_addresses(host_key)
+    if any(_address_is_blocked(address) for address in addresses):
+        raise ValueError("DUCKLING_URL address is not allowed")
+    return candidate
+
+
+def _address_literal(address):
+    address = _normalize_address(address)
+    if address.version == 6:
+        return f"[{address}]"
+    return str(address)
+
+
+def pinned_duckling_url(url=None):
+    """Return a validated URL whose host is an address we just accepted.
+
+    ``requests`` resolves the name again when it connects. A DNS record that
+    flips to the metadata service between the check and that second lookup
+    would bypass the allow-list. The URL returned here uses the address from
+    the lookup we checked, so the socket is not pointed at the name.
+    """
+    candidate = validated_duckling_url(url)
+    parts = urllib.parse.urlsplit(candidate)
+    host_key = parts.hostname.lower().rstrip(".")
+    try:
+        addresses = [ipaddress.ip_address(host_key)]
+    except ValueError:
+        addresses = _resolved_addresses(host_key)
+    if not addresses or any(_address_is_blocked(address) for address in addresses):
+        raise ValueError("DUCKLING_URL address is not allowed")
+    literal = _address_literal(addresses[0])
+    netloc = literal if parts.port is None else f"{literal}:{parts.port}"
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
+
+
+def post_duckling(data, timeout, url=None):
+    return requests.post(
+        pinned_duckling_url(url),
+        data=data,
+        timeout=timeout,
+        allow_redirects=False,
+    )
+
+
 def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
     # en_GB, so switch locale when we need French temporal parsing.
     locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
-    r = requests.post(
-        DUCKLING_URL,
-        data={
+    r = post_duckling(
+        {
             "locale": locale,
             "text": text,
             "dims": '["time","duration"]',
@@ -749,7 +870,10 @@ def duckling_parse(text):
         timeout=3,
     )
     r.raise_for_status()
-    return r.json()
+    body = r.json()
+    if not isinstance(body, list):
+        raise ValueError("Duckling returned an unexpected payload")
+    return body
 
 
 def root_token(doc):
