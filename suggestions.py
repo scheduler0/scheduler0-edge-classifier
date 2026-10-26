@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover - fallback for older interpreters
 
 # Reuse the singleton spaCy pipeline loaded by intent.py so we do not load the
 # model twice inside the same process.
-from intent import nlp, post_duckling
+from intent import nlp, post_duckling, read_duckling_json
 
 # IANA names only. Rejects path traversal ("../usr/share/zoneinfo") before
 # ZoneInfo or Duckling ever see the caller-supplied timezone.
@@ -164,12 +164,7 @@ def duckling_parse(text, reftime_ms=None, tz=None, locale="en_GB"):
     if safe_tz:
         data["tz"] = safe_tz
 
-    r = post_duckling(data, timeout=3)
-    r.raise_for_status()
-    body = r.json()
-    if not isinstance(body, list):
-        raise ValueError("Duckling returned an unexpected payload")
-    return body
+    return read_duckling_json(post_duckling(data, timeout=3))
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import ast
 import json
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -114,13 +115,34 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def loopback_base_url(base_url: str) -> str:
+    """Accept only a loopback classifier URL.
+
+    The tool sends health checks and message text to this URL. A non-loopback
+    value would turn a local eval into a request against whatever host was
+    passed, including a redirect target.
+    """
+    parts = urllib.parse.urlsplit(base_url.strip())
+    host = (parts.hostname or "").lower().rstrip(".")
+    if (
+        parts.scheme not in {"http", "https"}
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+        or host not in {"127.0.0.1", "localhost", "::1"}
+    ):
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+
+
 def check_prerequisites(
     base_url: str, claude_path: Path, session: requests.Session
 ) -> None:
     if not claude_path.is_file():
         raise RuntimeError(f"Claude Code CLI not found at {claude_path}")
     try:
-        response = session.get(f"{base_url}/healthz", timeout=5)
+        response = session.get(f"{base_url}/healthz", timeout=5, allow_redirects=False)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise RuntimeError(
@@ -248,6 +270,7 @@ def classify(
         f"{base_url}/v1/intents/classify",
         json={"text": text},
         timeout=10,
+        allow_redirects=False,
     )
     response.raise_for_status()
     payload = response.json()
@@ -317,8 +340,14 @@ def add_regression_test(
 
 def main() -> int:
     args = parse_args()
-    base_url = args.base_url.rstrip("/")
+    try:
+        base_url = loopback_base_url(args.base_url)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     session = requests.Session()
+    session.trust_env = False
+    session.max_redirects = 0
 
     try:
         check_prerequisites(base_url, args.claude_path.expanduser(), session)

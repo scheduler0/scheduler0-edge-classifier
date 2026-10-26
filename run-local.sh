@@ -42,7 +42,6 @@ if [ ! -x .venv/bin/uvicorn ]; then
   echo "  python3 -m venv .venv"
   echo "  source .venv/bin/activate"
   echo "  pip install -r requirements.txt"
-  echo "  python -m spacy download en_core_web_sm"
   exit 1
 fi
 
@@ -67,10 +66,14 @@ else
     echo "==> Starting existing Duckling container"
     docker start "$DUCKLING_CONTAINER" > /dev/null
   else
-    echo "==> Launching Duckling container (rasa/duckling, port ${DUCKLING_PORT})"
-    # rasa/duckling listens on 8000 inside the container
+    echo "==> Launching Duckling container (rasa/duckling:0.2.0.2-r4, port ${DUCKLING_PORT})"
+    # rasa/duckling listens on 8000 inside the container. The tag is pinned to
+    # the image digest so a rewritten Docker Hub tag cannot change the binary.
+    # Publish on loopback only; the classifier also listens on loopback.
     docker run -d --name "$DUCKLING_CONTAINER" \
-      -p "${DUCKLING_PORT}:8000" rasa/duckling > /dev/null
+      -p "127.0.0.1:${DUCKLING_PORT}:8000" \
+      rasa/duckling@sha256:55e7adfb6d63eb0d1c1bdb8a28080a74d4d281871258c2ca2d7cd0eaf29b2d11 \
+      > /dev/null
   fi
 
   echo "==> Waiting up to ${DUCKLING_TIMEOUT}s for Duckling at ${DUCKLING_URL}"

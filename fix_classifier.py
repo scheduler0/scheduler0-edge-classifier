@@ -2,6 +2,7 @@
 """Ask Claude for an intent.py patch that fixes failing classifier tests."""
 
 import argparse
+import ast
 import difflib
 import json
 import subprocess
@@ -139,6 +140,88 @@ def generate_patch(claude_path: Path, prompt: str, timeout: int) -> str:
     return build_patch(current_source, updated_source)
 
 
+# Modules the classifier is already allowed to use. A generated patch that
+# imports anything else, or that calls a process, network, or dynamic-exec
+# helper, is refused before git apply.
+_ALLOWED_IMPORT_ROOTS = {
+    "ipaddress",
+    "json",
+    "os",
+    "re",
+    "socket",
+    "urllib",
+    "requests",
+    "spacy",
+}
+_BANNED_CALLS = {
+    "eval",
+    "exec",
+    "__import__",
+    "compile",
+    "getattr",
+    "setattr",
+    "delattr",
+    "globals",
+    "locals",
+    "vars",
+    "breakpoint",
+    "input",
+}
+_BANNED_OS_ATTRS = {
+    "system",
+    "popen",
+    "execv",
+    "execve",
+    "execl",
+    "spawnl",
+    "spawnv",
+    "remove",
+    "unlink",
+    "kill",
+}
+_ALLOWED_SOCKET_ATTRS = {"getaddrinfo"}
+_ALLOWED_REQUESTS_ATTRS = {"post"}
+
+
+class _UnsafePatch(ValueError):
+    pass
+
+
+def _call_name(func: ast.AST):
+    if isinstance(func, ast.Name):
+        return func.id, None
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return func.value.id, func.attr
+    return None, None
+
+
+def assert_patch_source_is_safe(source: str) -> None:
+    """Reject a generated intent.py that adds a backdoor-shaped call."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0]
+                if root not in _ALLOWED_IMPORT_ROOTS:
+                    raise _UnsafePatch(f"generated patch imports {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            root = (node.module or "").split(".", 1)[0]
+            if root not in _ALLOWED_IMPORT_ROOTS:
+                raise _UnsafePatch(f"generated patch imports from {node.module}")
+        elif isinstance(node, ast.Call):
+            owner, attr = _call_name(node.func)
+            if owner in _BANNED_CALLS:
+                raise _UnsafePatch(f"generated patch calls {owner}")
+            if owner == "os" and attr in _BANNED_OS_ATTRS:
+                raise _UnsafePatch(f"generated patch calls os.{attr}")
+            if owner == "subprocess":
+                raise _UnsafePatch("generated patch calls subprocess")
+            if owner == "socket" and attr not in _ALLOWED_SOCKET_ATTRS:
+                raise _UnsafePatch(f"generated patch calls socket.{attr}")
+            if owner == "requests" and attr not in _ALLOWED_REQUESTS_ATTRS:
+                raise _UnsafePatch(f"generated patch calls requests.{attr}")
+
+
 def extract_updated_source(output: str) -> str:
     text = output.strip()
     opening_fence = text.find("```")
@@ -159,6 +242,7 @@ def extract_updated_source(output: str) -> str:
         ) from exc
     if "def classify(" not in updated_source:
         raise ValueError("Claude response does not appear to contain intent.py")
+    assert_patch_source_is_safe(updated_source)
     return updated_source
 
 

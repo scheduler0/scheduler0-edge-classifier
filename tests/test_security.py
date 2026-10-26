@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
 from fastapi import HTTPException
 from pydantic import ValidationError
 
@@ -23,7 +24,13 @@ from app import (
     docs_enabled,
     enforce_api_key,
 )
-from intent import pinned_duckling_url, post_duckling, validated_duckling_url
+from intent import (
+    MAX_DUCKLING_RESPONSE_BYTES,
+    pinned_duckling_url,
+    post_duckling,
+    read_duckling_json,
+    validated_duckling_url,
+)
 from suggestions import duckling_parse, get_zone, parse_hhmm, sanitize_timezone
 
 
@@ -91,6 +98,7 @@ class DucklingUrlTests(unittest.TestCase):
         with patch("intent.requests.post") as post:
             post_duckling({"text": "tomorrow"}, timeout=3, url="http://10.0.0.8:8000/parse")
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
+        self.assertTrue(post.call_args.kwargs["stream"])
         self.assertEqual("http://10.0.0.8:8000/parse", post.call_args.args[0])
 
     def test_post_connects_to_the_resolved_address(self):
@@ -109,18 +117,55 @@ class DucklingUrlTests(unittest.TestCase):
         self.assertEqual("http://10.9.8.7:8000/parse?x=1", post.call_args.args[0])
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
-    def test_post_refuses_a_rebinding_lookup(self):
+    def test_post_resolves_a_hostname_once(self):
         private = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.9.8.7", 0))]
         metadata = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
-        with patch("intent.socket.getaddrinfo", side_effect=[private, metadata]):
+
+        def lookup(*_args, **_kwargs):
+            lookup.calls += 1
+            if lookup.calls > 1:
+                return metadata
+            return private
+
+        lookup.calls = 0
+        with patch("intent.socket.getaddrinfo", side_effect=lookup):
             with patch("intent.requests.post") as post:
-                with self.assertRaises(ValueError):
-                    post_duckling(
-                        {"text": "tomorrow"},
-                        timeout=3,
-                        url="http://duckling.internal/parse",
-                    )
-        post.assert_not_called()
+                post_duckling(
+                    {"text": "tomorrow"},
+                    timeout=3,
+                    url="http://duckling.internal/parse",
+                )
+        self.assertEqual(1, lookup.calls)
+        post.assert_called_once()
+        self.assertEqual("http://10.9.8.7/parse", post.call_args.args[0])
+
+    def test_post_rejects_an_oversized_body(self):
+        response = requests.Response()
+        response.status_code = 200
+        response.iter_content = lambda chunk_size=65536: iter(
+            [b"x" * (MAX_DUCKLING_RESPONSE_BYTES + 1)]
+        )
+        with patch("intent.requests.post", return_value=response):
+            with self.assertRaises(ValueError):
+                post_duckling(
+                    {"text": "tomorrow"},
+                    timeout=3,
+                    url="http://10.0.0.8:8000/parse",
+                )
+
+    def test_redirect_body_is_not_parsed(self):
+        response = requests.Response()
+        response.status_code = 302
+        response.headers["Location"] = "http://169.254.169.254/latest/meta-data/"
+        response.iter_content = lambda chunk_size=65536: iter([b"[]"])
+        with patch("intent.requests.post", return_value=response):
+            posted = post_duckling(
+                {"text": "tomorrow"},
+                timeout=3,
+                url="http://10.0.0.8:8000/parse",
+            )
+        with self.assertRaises(ValueError):
+            read_duckling_json(posted)
 
     def test_post_brackets_an_ipv6_literal(self):
         with patch("intent.requests.post") as post:
@@ -142,6 +187,30 @@ class SupplyChainPinTests(unittest.TestCase):
             "1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0",
             script,
         )
+        self.assertIn("-b 127.0.0.1", script)
+        self.assertIn("duckling-bind.sh --serve", script)
+        self.assertIn('pip==26.2.2', script)
+        self.assertNotIn("spacy download", script)
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("starlette>=1.3.1", requirements)
+        self.assertIn("requests>=2.33.0", requirements)
+        self.assertIn("urllib3>=2.8.0", requirements)
+        self.assertIn("python-multipart>=0.0.31", requirements)
+        self.assertIn(
+            "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889",
+            requirements,
+        )
+        deploy = (ROOT / ".github" / "workflows" / "_deploy.yml").read_text(encoding="utf-8")
+        self.assertNotIn("IMAGE_URI_LATEST", deploy)
+        self.assertNotRegex(deploy, r"docker (build|push|tag)[^\n]*:latest")
+        for template in ROOT.glob("*-ecs-task-definition.template.json"):
+            self.assertNotIn(":latest", template.read_text(encoding="utf-8"))
+        local = (ROOT / "run-local.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            "rasa/duckling@sha256:55e7adfb6d63eb0d1c1bdb8a28080a74d4d281871258c2ca2d7cd0eaf29b2d11",
+            local,
+        )
+        self.assertIn('127.0.0.1:${DUCKLING_PORT}:8000', local)
 
     def test_github_actions_are_pinned_to_commits(self):
         workflow_dir = ROOT / ".github" / "workflows"
