@@ -108,11 +108,11 @@ jobs:
         set -euo pipefail
 
         IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-        IMAGE_URI_LATEST="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
 
-        docker build -t "${IMAGE_URI}" -t "${IMAGE_URI_LATEST}" .
+        # Push only the immutable commit tag. A moving :latest tag can be
+        # retargeted without changing the task definition that already shipped.
+        docker build -t "${IMAGE_URI}" .
         docker push "${IMAGE_URI}"
-        docker push "${IMAGE_URI_LATEST}"
 
         echo "image=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 

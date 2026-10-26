@@ -2,7 +2,8 @@
     "containerDefinitions": [
         {
             "name": "production-scheduler0-intent-classifier",
-            "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/production-scheduler0-intent-classifier:latest",
+            "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/production-scheduler0-intent-classifier:<IMAGE_TAG>",
+            "privileged": false,
             "cpu": 1024,
             "memory": 2048,
             "essential": true,
@@ -45,7 +46,10 @@
                 "retries": 3,
                 "startPeriod": 300
             },
-            "systemControls": []
+            "systemControls": [],
+            "linuxParameters": {
+                "initProcessEnabled": true
+            }
         }
     ],
     "family": "production_scheduler0-intent-classifier",

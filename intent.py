@@ -786,15 +786,10 @@ def _resolved_addresses(host):
     return addresses
 
 
-def validated_duckling_url(url=None):
-    """Return a Duckling URL that is safe to request.
+def _duckling_url_parts(url=None):
+    """Return the candidate URL, its split, and the normalized host.
 
-    Private hosts stay allowed because Duckling runs on the EC2 host. Link-local,
-    public, and metadata addresses are refused so a poisoned DUCKLING_URL cannot
-    reach the instance metadata service or an external host. Hostnames are
-    resolved and every address is checked, which rejects decimal and hex forms
-    that getaddrinfo maps onto the metadata service. Callers must not follow
-    redirects.
+    This does not resolve DNS. Callers that need an address check do that once.
     """
     candidate = (DUCKLING_URL if url is None else url).strip()
     if not candidate or any(ch in candidate for ch in "\r\n\t "):
@@ -810,12 +805,32 @@ def validated_duckling_url(url=None):
     host_key = host.lower().rstrip(".")
     if host_key in _BLOCKED_DUCKLING_HOSTS or host_key.endswith(".metadata.google.internal"):
         raise ValueError("DUCKLING_URL host is not allowed")
+    return candidate, parts, host_key
+
+
+def _allowed_addresses(host_key):
+    """Resolve a host at most once and refuse any blocked answer."""
     try:
         addresses = [ipaddress.ip_address(host_key)]
     except ValueError:
         addresses = _resolved_addresses(host_key)
-    if any(_address_is_blocked(address) for address in addresses):
+    if not addresses or any(_address_is_blocked(address) for address in addresses):
         raise ValueError("DUCKLING_URL address is not allowed")
+    return addresses
+
+
+def validated_duckling_url(url=None):
+    """Return a Duckling URL that is safe to request.
+
+    Private hosts stay allowed because Duckling runs on the EC2 host. Link-local,
+    public, and metadata addresses are refused so a poisoned DUCKLING_URL cannot
+    reach the instance metadata service or an external host. Hostnames are
+    resolved once and every address is checked, which rejects decimal and hex
+    forms that getaddrinfo maps onto the metadata service. Callers must not
+    follow redirects.
+    """
+    candidate, _parts, host_key = _duckling_url_parts(url)
+    _allowed_addresses(host_key)
     return candidate
 
 
@@ -827,41 +842,88 @@ def _address_literal(address):
 
 
 def pinned_duckling_url(url=None):
-    """Return a validated URL whose host is an address we just accepted.
+    """Return a URL whose host is the address from a single allow-list check.
 
-    ``requests`` resolves the name again when it connects. A DNS record that
-    flips to the metadata service between the check and that second lookup
-    would bypass the allow-list. The URL returned here uses the address from
-    the lookup we checked, so the socket is not pointed at the name.
+    ``requests`` resolves a name again when it connects. A second lookup can
+    point the socket at a different private address, or at the metadata
+    service, after the first answer was accepted. This uses the address from
+    the one lookup we checked.
     """
-    candidate = validated_duckling_url(url)
-    parts = urllib.parse.urlsplit(candidate)
-    host_key = parts.hostname.lower().rstrip(".")
-    try:
-        addresses = [ipaddress.ip_address(host_key)]
-    except ValueError:
-        addresses = _resolved_addresses(host_key)
-    if not addresses or any(_address_is_blocked(address) for address in addresses):
-        raise ValueError("DUCKLING_URL address is not allowed")
+    _candidate, parts, host_key = _duckling_url_parts(url)
+    addresses = _allowed_addresses(host_key)
     literal = _address_literal(addresses[0])
     netloc = literal if parts.port is None else f"{literal}:{parts.port}"
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
 
 
+# A compromised Duckling, or a private host that answers in its place, must
+# not be able to expand a short classify request into an unbounded body.
+MAX_DUCKLING_RESPONSE_BYTES = 1_048_576
+
+
+def _close_quietly(response):
+    raw = response.raw
+    if raw is not None:
+        response.close()
+
+
+def _consume_limited(response, limit=MAX_DUCKLING_RESPONSE_BYTES):
+    """Read a streamed response and refuse bodies above ``limit``."""
+    declared = response.headers.get("Content-Length")
+    if isinstance(declared, str) and declared.isdigit() and int(declared) > limit:
+        _close_quietly(response)
+        raise ValueError("Duckling response is too large")
+    size = 0
+    chunks = []
+    for chunk in response.iter_content(chunk_size=65536):
+        if not chunk:
+            continue
+        size += len(chunk)
+        if size > limit:
+            _close_quietly(response)
+            raise ValueError("Duckling response is too large")
+        chunks.append(chunk)
+    response._content = b"".join(chunks)
+    response._content_consumed = True
+    return response
+
+
 def post_duckling(data, timeout, url=None):
-    return requests.post(
+    response = requests.post(
         pinned_duckling_url(url),
         data=data,
         timeout=timeout,
         allow_redirects=False,
+        stream=True,
     )
+    # Tests replace requests.post with a mock. Only a real response is read
+    # here, so the mock's body stays under the caller's control.
+    if isinstance(response, requests.Response):
+        _consume_limited(response)
+    return response
+
+
+def read_duckling_json(response):
+    """Return Duckling's entity list, or raise without parsing anything else.
+
+    Redirect statuses are not followed and are not treated as a parse result.
+    ``requests`` would otherwise accept a 3xx and hand the body to ``json``.
+    """
+    if isinstance(response, requests.Response) and response.status_code != 200:
+        _close_quietly(response)
+        raise ValueError("Duckling returned an unexpected status")
+    response.raise_for_status()
+    body = response.json()
+    if not isinstance(body, list):
+        raise ValueError("Duckling returned an unexpected payload")
+    return body
 
 
 def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
     # en_GB, so switch locale when we need French temporal parsing.
     locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
-    r = post_duckling(
+    response = post_duckling(
         {
             "locale": locale,
             "text": text,
@@ -869,11 +931,7 @@ def duckling_parse(text):
         },
         timeout=3,
     )
-    r.raise_for_status()
-    body = r.json()
-    if not isinstance(body, list):
-        raise ValueError("Duckling returned an unexpected payload")
-    return body
+    return read_duckling_json(response)
 
 
 def root_token(doc):

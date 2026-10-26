@@ -123,9 +123,8 @@ jobs:
           GH_TOKEN: ""
           ACTIONS_RUNTIME_TOKEN: ""
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --disable-pip-version-check 'pip==26.2.2'
           pip install -r requirements.txt
-          python -m spacy download en_core_web_sm
 
       - name: Run tests to identify issues
         id: test
