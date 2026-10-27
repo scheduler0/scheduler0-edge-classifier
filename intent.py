@@ -786,6 +786,33 @@ def _resolved_addresses(host):
     return addresses
 
 
+def _canonical_netloc(parts):
+    """Reject a netloc whose raw text is not the host and port urlsplit reports.
+
+    ``hostname`` stops at a NUL or a carriage return, so
+    ``10.0.0.8:8000%00.example`` still reports the host ``10.0.0.8``. The raw
+    netloc is what the client sends. A leading-zero port (``:08000``) is also
+    refused because some parsers read it as octal and others as decimal.
+    """
+    try:
+        host = parts.hostname
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("DUCKLING_URL host is not canonical") from exc
+    if (
+        not host
+        or host.endswith(".")
+        or any(ord(char) < 33 or char in "%@\\" for char in host)
+    ):
+        raise ValueError("DUCKLING_URL host is not canonical")
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("DUCKLING_URL port is not canonical")
+    literal = f"[{host}]" if ":" in host else host
+    expected = literal if port is None else f"{literal}:{port}"
+    if parts.netloc.lower() != expected.lower():
+        raise ValueError("DUCKLING_URL host is not canonical")
+
+
 def _duckling_url_parts(url=None):
     """Return the candidate URL, its split, and the normalized host.
 
@@ -799,9 +826,10 @@ def _duckling_url_parts(url=None):
         raise ValueError("DUCKLING_URL must use http or https")
     if parts.username is not None or parts.password is not None:
         raise ValueError("DUCKLING_URL must not include credentials")
+    if parts.fragment:
+        raise ValueError("DUCKLING_URL must not include a fragment")
+    _canonical_netloc(parts)
     host = parts.hostname
-    if not host:
-        raise ValueError("DUCKLING_URL is missing a host")
     host_key = host.lower().rstrip(".")
     if host_key in _BLOCKED_DUCKLING_HOSTS or host_key.endswith(".metadata.google.internal"):
         raise ValueError("DUCKLING_URL host is not allowed")
@@ -870,9 +898,17 @@ def _close_quietly(response):
 def _consume_limited(response, limit=MAX_DUCKLING_RESPONSE_BYTES):
     """Read a streamed response and refuse bodies above ``limit``."""
     declared = response.headers.get("Content-Length")
-    if isinstance(declared, str) and declared.isdigit() and int(declared) > limit:
-        _close_quietly(response)
-        raise ValueError("Duckling response is too large")
+    if declared is not None:
+        # Ten digits covers every length above the cap. A longer digit string
+        # is refused before int() so it cannot force a multi-megabyte integer.
+        if (
+            not isinstance(declared, str)
+            or len(declared) > 10
+            or not declared.isdigit()
+            or int(declared) > limit
+        ):
+            _close_quietly(response)
+            raise ValueError("Duckling response is too large")
     size = 0
     chunks = []
     for chunk in response.iter_content(chunk_size=65536):
