@@ -40,19 +40,44 @@ Its implementation uses these imperfect heuristics:
   meet", "when should we meet", "why don't we meet", "why not meet", and
   "what say we meet". Hedged proposals ("I was wondering if we could meet",
   "any chance we could meet", "mind if we meet", "we need to meet",
-  "fancy a call", "up for a meeting") are requests. A scheduling imperative
-  after a short lead-in ("Okay, book the room", "Reminder: send the report")
-  is a request; a new sentence after a period and quoted speech ("She said,
-  remind me") are not.
+  "fancy a call", "up for a meeting", "I'd rather we meet", "I'd prefer a
+  call", "we might meet", "mind reminding", "I could use a reminder",
+  "it'd help if you reminded", "any possibility of meeting", "I'm open to
+  meeting", "need you to remind", "you should probably remind", "have
+  someone remind") are requests. "can u" / "could u" count as "can you".
+  "Create" is a request only when it creates a reminder, meeting, or other
+  calendar object ("Create a scene every Monday" is a statement).
+  A scheduling imperative after a short lead-in ("Okay, book the room",
+  "Reminder: send the report") is a request; a new sentence after a period
+  and quoted speech ("She said, remind me") are not. An imperative in a
+  later clause ("I can't make Monday, so remind me Tuesday", "Never mind
+  tomorrow, let's do Friday") is still a request.
 - Asks whose root verb is tell/explain/describe are rejected even if they
   mention a time, unless they complement a scheduling verb ("tell me to book").
 - don't/do not/dont/never/stop/cancel/remove plus a temporal signal clarifies.
   "stop by", "don't forget", "don't let me forget", and discourse "never mind"
   are not treated as canceling the request. Rhetorical proposal negation
-  ("why don't we", "couldn't we", "don't you think we should") and contrastive
+  ("why don't we", "couldn't we", "don't you think we should", "why not Thursday",
+  "why not do Thursday", "couldn't we do Thursday") and contrastive
   time ("remind me Friday, not Monday", "not tomorrow — remind me Friday")
-  are not cancellations. Bare "not" attached to a noun or adverb is not one
-  either. "I will not attend" still clarifies.
+  are not cancellations. "I wouldn't mind meeting" and "wouldn't mind a call"
+  accept a slot. Bare "not" attached to a noun or adverb is not one
+  either. "I will not attend" still clarifies. call off / hold off / scratch /
+  scrap / kill / drop the meeting, bare "forget the meeting", "no meetings",
+  and "skip Friday" clarify. "Drop me a reminder" stays a request.
+  "Remind me what/when/where" is informational. "Could ya" counts as "could you".
+  "We should sync" is a meeting unless sync takes an object. "We should
+  chat" and "we should confer" are meetings unless they take an object or
+  "about". "Okay/alright/fine for a call", "how would Thursday work/look
+  for a sync", "around for a call", "I'm a go for the call", "got 15
+  minutes for a sync", and "circle Thursday for the review" are slot
+  offers. "Okay for pizza", "around the office", and "15 dollars" are not.
+  "It'd be great to
+  meet", "I'm gonna need a reminder", "the team should meet", and "I'd like us
+  to meet" are requests. "Send volumes grow" is a headline, not a command.
+  "skip" / "avoid" / "refrain from" plus a meeting, reminder, or emailing
+  clarifies. Past and confirmation questions ("did you schedule", "don't we
+  meet", "wasn't the meeting moved", "is tomorrow a holiday?") are rejected.
 - Decision order: informational question or informational request -> reject;
   negation plus temporal -> clarify; temporal plus declarative statement ->
   reject; temporal plus request -> allow; temporal only -> clarify; request
@@ -63,8 +88,20 @@ Its implementation uses these imperfect heuristics:
   trusted for French. Duckling is called with locale fr_FR for that text.
   Soft proposals are requests: "pourquoi ne pas se voir", "et si on se voyait",
   "serait-il possible de se voir", "est-ce qu'on peut", "je te propose",
-  "ça te dit", "on se voit ... ?", and "dis-moi de bloquer". "Pourquoi ne pas"
-  is not a cancellation and not an informational question.
+  "ça te dit", "ça te dirait", "ça te va", "ça te tenterait",
+  "on se fait un point ... ?", "on se fait une visio ... ?",
+  "pourrait-on se voir", "on peut se voir", "si on se voyait",
+  "ce serait bien de se voir", "je préférerais qu'on se voie",
+  "chaud pour un point", "tu me rappelles ... ?", "faut se voir",
+  "on se téléphone ... ?", "on se rappelle ... ?" (not "on se rappelle le film"),
+  "prévois ... point", "que dirais-tu ... point", "on se fixe ... point ?",
+  "on verrouille ... point", "et si jeudi pour le point", "booke-moi ... point",
+  and "on se donne ... point ?". "Je me désiste du point" and "on raye le point"
+  clarify. "On se voit ... ?", "je souhaiterais", "reporte", and "dis-moi de bloquer".
+  "Pourquoi ne pas" is not a cancellation and not an informational question.
+  "Rappelle-moi pas" is a cancellation. "On peut partir" and "tu me rappelles"
+  without "?" are not requests. "Pourquoi on se voit ?" and "c'est quand" are
+  informational. "a lieu" is a statement ("le standup a lieu tous les matins").
 """
 
 
