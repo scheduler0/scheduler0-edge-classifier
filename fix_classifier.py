@@ -140,22 +140,39 @@ def generate_patch(claude_path: Path, prompt: str, timeout: int) -> str:
     return build_patch(current_source, updated_source)
 
 
-# Modules the classifier is already allowed to use. A generated patch that
-# imports anything else, or that calls a process, network, or dynamic-exec
-# helper, is refused before git apply.
-_ALLOWED_IMPORT_ROOTS = {
-    "ipaddress",
-    "json",
+# The generated file replaces intent.py wholesale. These names are the
+# network boundary. A patch may change classification heuristics, but it may
+# not replace the Duckling client, add an import, or reach outside the process.
+_PROTECTED_FUNCTIONS = (
+    "_normalize_address",
+    "_address_is_blocked",
+    "_resolved_addresses",
+    "_canonical_netloc",
+    "_duckling_url_parts",
+    "_allowed_addresses",
+    "validated_duckling_url",
+    "_address_literal",
+    "pinned_duckling_url",
+    "_close_quietly",
+    "_consume_limited",
+    "post_duckling",
+    "read_duckling_json",
+)
+_FROZEN_ASSIGNMENTS = (
+    "DUCKLING_URL",
+    "_BLOCKED_DUCKLING_HOSTS",
+    "_AWS_IPV6_IMDS",
+    "MAX_DUCKLING_RESPONSE_BYTES",
+)
+_BANNED_NAMES = {
     "os",
-    "re",
     "socket",
-    "urllib",
     "requests",
-    "spacy",
-}
-_BANNED_CALLS = {
+    "subprocess",
+    "open",
     "eval",
     "exec",
+    "execfile",
     "__import__",
     "compile",
     "getattr",
@@ -166,60 +183,170 @@ _BANNED_CALLS = {
     "vars",
     "breakpoint",
     "input",
+    "memoryview",
+    "__build_class__",
+    "__builtins__",
+    "builtins",
+    "ctypes",
+    "importlib",
+    "pathlib",
+    "pickle",
+    "shelve",
+    "marshal",
 }
-_BANNED_OS_ATTRS = {
+_BANNED_ATTRS = {
     "system",
     "popen",
+    "fork",
+    "forkpty",
+    "execl",
+    "execle",
+    "execlp",
+    "execlpe",
     "execv",
     "execve",
-    "execl",
+    "execvp",
+    "execvpe",
     "spawnl",
+    "spawnle",
+    "spawnlp",
+    "spawnlpe",
     "spawnv",
+    "spawnve",
+    "spawnvp",
+    "spawnvpe",
+    "posix_spawn",
+    "posix_spawnp",
+    "kill",
+    "killpg",
     "remove",
     "unlink",
-    "kill",
+    "rmdir",
+    "putenv",
+    "unsetenv",
+    "urlopen",
+    "urlretrieve",
+    "Popen",
+    "load_module",
 }
-_ALLOWED_SOCKET_ATTRS = {"getaddrinfo"}
-_ALLOWED_REQUESTS_ATTRS = {"post"}
 
 
 class _UnsafePatch(ValueError):
     pass
 
 
-def _call_name(func: ast.AST):
-    if isinstance(func, ast.Name):
-        return func.id, None
-    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-        return func.value.id, func.attr
-    return None, None
+def _import_signature(tree: ast.AST) -> List[str]:
+    return [
+        ast.dump(node)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
+
+
+def _function_map(tree: ast.AST) -> dict:
+    found: dict = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            found.setdefault(node.name, []).append(ast.dump(node))
+    return found
+
+
+def _assignment_map(tree: ast.AST) -> dict:
+    found: dict = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                found.setdefault(target.id, []).append(ast.dump(node))
+    return found
+
+
+def _assigned_names(node: ast.AST) -> List[str]:
+    if isinstance(node, ast.Name):
+        return [node.id]
+    if isinstance(node, (ast.Tuple, ast.List)):
+        names: List[str] = []
+        for element in node.elts:
+            names.extend(_assigned_names(element))
+        return names
+    if isinstance(node, ast.Starred):
+        return _assigned_names(node.value)
+    return []
+
+
+def _iter_untrusted(tree: ast.AST):
+    protected = set(_PROTECTED_FUNCTIONS)
+    frozen = set(_FROZEN_ASSIGNMENTS)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in protected:
+            continue
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id in frozen for target in node.targets
+        ):
+            continue
+        yield from ast.walk(node)
 
 
 def assert_patch_source_is_safe(source: str) -> None:
-    """Reject a generated intent.py that adds a backdoor-shaped call."""
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                root = alias.name.split(".", 1)[0]
-                if root not in _ALLOWED_IMPORT_ROOTS:
-                    raise _UnsafePatch(f"generated patch imports {alias.name}")
-        elif isinstance(node, ast.ImportFrom):
-            root = (node.module or "").split(".", 1)[0]
-            if root not in _ALLOWED_IMPORT_ROOTS:
-                raise _UnsafePatch(f"generated patch imports from {node.module}")
-        elif isinstance(node, ast.Call):
-            owner, attr = _call_name(node.func)
-            if owner in _BANNED_CALLS:
-                raise _UnsafePatch(f"generated patch calls {owner}")
-            if owner == "os" and attr in _BANNED_OS_ATTRS:
-                raise _UnsafePatch(f"generated patch calls os.{attr}")
-            if owner == "subprocess":
-                raise _UnsafePatch("generated patch calls subprocess")
-            if owner == "socket" and attr not in _ALLOWED_SOCKET_ATTRS:
-                raise _UnsafePatch(f"generated patch calls socket.{attr}")
-            if owner == "requests" and attr not in _ALLOWED_REQUESTS_ATTRS:
-                raise _UnsafePatch(f"generated patch calls requests.{attr}")
+    """Reject a generated intent.py that can leave the Duckling boundary.
+
+    Direct calls such as ``os.system`` were already refused. Indirect forms
+    were not: ``requests.Session().post``, ``os.execlp``, ``open``, a lambda
+    that reaches ``__import__``, ``os.environ`` reads, and dunder traversal
+    (``__class__.__subclasses__``). The network helpers and their module-level
+    configuration have to stay identical to the file on disk.
+    """
+    try:
+        updated = ast.parse(source)
+        baseline = ast.parse(INTENT_PATH.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError) as exc:
+        raise _UnsafePatch("generated patch is not valid Python") from exc
+
+    if _import_signature(updated) != _import_signature(baseline):
+        raise _UnsafePatch("generated patch changes imports")
+
+    baseline_functions = _function_map(baseline)
+    updated_functions = _function_map(updated)
+    for name in _PROTECTED_FUNCTIONS:
+        if updated_functions.get(name) != baseline_functions.get(name):
+            raise _UnsafePatch(f"generated patch changes {name}")
+
+    baseline_assignments = _assignment_map(baseline)
+    updated_assignments = _assignment_map(updated)
+    for name in _FROZEN_ASSIGNMENTS:
+        if updated_assignments.get(name) != baseline_assignments.get(name):
+            raise _UnsafePatch(f"generated patch changes {name}")
+
+    frozen_names = set(_PROTECTED_FUNCTIONS) | set(_FROZEN_ASSIGNMENTS)
+    for node in _iter_untrusted(updated):
+        if isinstance(node, ast.Name) and node.id in _BANNED_NAMES:
+            raise _UnsafePatch(f"generated patch references {node.id}")
+        if isinstance(node, ast.Attribute) and (
+            node.attr.startswith("__") or node.attr in _BANNED_ATTRS
+        ):
+            raise _UnsafePatch(f"generated patch uses .{node.attr}")
+        if isinstance(node, ast.Call) and not isinstance(node.func, (ast.Name, ast.Attribute)):
+            raise _UnsafePatch("generated patch uses an indirect call")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name in frozen_names or node.name in _BANNED_NAMES:
+                raise _UnsafePatch(f"generated patch redefines {node.name}")
+        targets: List[str] = []
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                targets.extend(_assigned_names(target))
+        elif isinstance(node, ast.AnnAssign):
+            targets.extend(_assigned_names(node.target))
+        elif isinstance(node, (ast.AugAssign, ast.NamedExpr)):
+            targets.extend(_assigned_names(node.target))
+        elif isinstance(node, ast.Delete):
+            for target in node.targets:
+                targets.extend(_assigned_names(target))
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            targets.extend(node.names)
+        for name in targets:
+            if name in frozen_names:
+                raise _UnsafePatch(f"generated patch rebinds {name}")
 
 
 def extract_updated_source(output: str) -> str:

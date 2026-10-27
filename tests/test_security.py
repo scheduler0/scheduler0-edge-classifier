@@ -88,6 +88,11 @@ class DucklingUrlTests(unittest.TestCase):
             "http://metadata.google.internal/computeMetadata/v1/",
             "http://127.0.0.1:8000/parse\nGET /",
             "gopher://127.0.0.1:8000/",
+            "http://10.0.0.8:8000%00.example/parse",
+            "http://10.0.0.8:8000%0d%0a/parse",
+            "http://10.0.0.8:08000/parse",
+            "http://10.0.0.8:/parse",
+            "http://10.0.0.8:8000/parse#next",
         )
         for url in refused:
             with self.subTest(url=url):
@@ -138,6 +143,26 @@ class DucklingUrlTests(unittest.TestCase):
         self.assertEqual(1, lookup.calls)
         post.assert_called_once()
         self.assertEqual("http://10.9.8.7/parse", post.call_args.args[0])
+
+    def test_absurd_duckling_content_length_is_rejected_before_the_body_is_read(self):
+        response = requests.Response()
+        response.status_code = 200
+        response.headers["Content-Length"] = "9" * 10000
+        consumed = {}
+
+        def iter_content(chunk_size=65536):
+            consumed["hit"] = True
+            yield b"[]"
+
+        response.iter_content = iter_content
+        with patch("intent.requests.post", return_value=response):
+            with self.assertRaises(ValueError):
+                post_duckling(
+                    {"text": "tomorrow"},
+                    timeout=3,
+                    url="http://10.0.0.8:8000/parse",
+                )
+        self.assertNotIn("hit", consumed)
 
     def test_post_rejects_an_oversized_body(self):
         response = requests.Response()
@@ -211,6 +236,11 @@ class SupplyChainPinTests(unittest.TestCase):
             local,
         )
         self.assertIn('127.0.0.1:${DUCKLING_PORT}:8000', local)
+        self.assertIn('--max-redirs 0 -X POST "$DUCKLING_URL"', local)
+        start = (ROOT / "start.sh").read_text(encoding="utf-8")
+        self.assertIn("--max-redirs 0 -X PUT", start)
+        self.assertIn('--max-redirs 0 -X POST "$DUCKLING_URL"', start)
+        self.assertIn("curl -f --max-redirs 0 http://127.0.0.1:8080/healthz", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
 
     def test_github_actions_are_pinned_to_commits(self):
         workflow_dir = ROOT / ".github" / "workflows"

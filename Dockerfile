@@ -25,6 +25,6 @@ RUN chmod 755 start.sh \
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
-  CMD curl -f http://localhost:8080/healthz || exit 1
+  CMD curl -f --max-redirs 0 http://127.0.0.1:8080/healthz || exit 1
 
 CMD ["./start.sh"]

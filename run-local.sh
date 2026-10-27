@@ -51,7 +51,7 @@ if [ "$PORT" = "$DUCKLING_PORT" ]; then
 fi
 
 # ── Start Duckling (Docker) ───────────────────────────────────────────────────
-if curl -sf --max-time 2 -X POST "$DUCKLING_URL" \
+if curl -sf --max-time 2 --max-redirs 0 -X POST "$DUCKLING_URL" \
     -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; then
   echo "==> Duckling already responding at ${DUCKLING_URL}"
 else
@@ -78,7 +78,7 @@ else
 
   echo "==> Waiting up to ${DUCKLING_TIMEOUT}s for Duckling at ${DUCKLING_URL}"
   ELAPSED=0
-  until curl -sf --connect-timeout 2 --max-time 5 -X POST "$DUCKLING_URL" \
+  until curl -sf --connect-timeout 2 --max-time 5 --max-redirs 0 -X POST "$DUCKLING_URL" \
       -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; do
     if [ "$ELAPSED" -ge "$DUCKLING_TIMEOUT" ]; then
       echo "ERROR: Duckling did not become ready within ${DUCKLING_TIMEOUT}s"

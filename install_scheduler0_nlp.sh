@@ -360,7 +360,7 @@ if ! pgrep -f "duckling-example-exe" >/dev/null 2>&1; then
   DUCKLING_STARTED_HERE=true
   echo "Waiting for Duckling to accept connections..."
   for i in $(seq 1 60); do
-    if curl -sf -X POST "http://127.0.0.1:${DUCKLING_PORT}/parse" \
+    if curl -sf --max-redirs 0 -X POST "http://127.0.0.1:${DUCKLING_PORT}/parse" \
         -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; then
       echo "Duckling ready"
       break

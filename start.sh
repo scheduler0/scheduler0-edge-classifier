@@ -52,10 +52,10 @@ fi
 
 read_metadata_ipv4() {
   local token ip
-  token=$(curl -sf --max-time 2 -X PUT "http://169.254.169.254/latest/api/token" \
+  token=$(curl -sf --max-time 2 --max-redirs 0 -X PUT "http://169.254.169.254/latest/api/token" \
     -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)
   if [ -n "$token" ]; then
-    ip=$(curl -sf --max-time 5 \
+    ip=$(curl -sf --max-time 5 --max-redirs 0 \
       -H "X-aws-ec2-metadata-token: ${token}" \
       http://169.254.169.254/latest/meta-data/local-ipv4 || true)
     if is_safe_host_ip "$ip"; then
@@ -65,7 +65,7 @@ read_metadata_ipv4() {
   fi
   # IMDSv1 only as a last resort, and only for the private IPv4 address.
   # The response is still passed through is_safe_host_ip.
-  ip=$(curl -sf --max-time 5 http://169.254.169.254/latest/meta-data/local-ipv4 || true)
+  ip=$(curl -sf --max-time 5 --max-redirs 0 http://169.254.169.254/latest/meta-data/local-ipv4 || true)
   if is_safe_host_ip "$ip"; then
     printf '%s\n' "$ip"
     return 0
@@ -106,7 +106,7 @@ export PYTHONDONTWRITEBYTECODE=1
 # ── Wait for Duckling ─────────────────────────────────────────────────────────
 echo "==> Waiting up to ${DUCKLING_TIMEOUT}s for Duckling at ${DUCKLING_URL}"
 ELAPSED=0
-until curl -sf --connect-timeout 5 --max-time 10 -X POST "$DUCKLING_URL" \
+until curl -sf --connect-timeout 5 --max-time 10 --max-redirs 0 -X POST "$DUCKLING_URL" \
     -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; do
   if [ "$ELAPSED" -ge "$((10#$DUCKLING_TIMEOUT))" ]; then
     echo "ERROR: Duckling did not become ready within ${DUCKLING_TIMEOUT}s"
