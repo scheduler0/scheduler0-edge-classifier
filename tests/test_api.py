@@ -120,25 +120,28 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual([], result["warnings"])
 
     def test_healthz_reports_ok_when_both_backends_respond(self):
-        with patch("app.requests.post") as post:
+        with patch("app.post_duckling") as post:
             post.return_value.raise_for_status.return_value = None
             body = healthz()
         self.assertEqual({"status": "ok"}, body)
-        self.assertEqual("en_GB", post.call_args.kwargs["data"]["locale"])
+        self.assertEqual("en_GB", post.call_args.args[0]["locale"])
+        self.assertEqual(2, post.call_args.kwargs["timeout"])
 
     def test_healthz_fails_when_duckling_is_down(self):
-        with patch("app.requests.post", side_effect=ConnectionError("refused")):
+        with patch("app.post_duckling", side_effect=ConnectionError("refused")):
             with self.assertRaises(HTTPException) as ctx:
                 healthz()
         self.assertEqual(503, ctx.exception.status_code)
-        self.assertIn("Duckling", ctx.exception.detail)
+        self.assertEqual("Duckling unreachable", ctx.exception.detail)
+        self.assertNotIn("refused", ctx.exception.detail)
 
     def test_healthz_fails_when_spacy_is_down(self):
         with patch("app.nlp", side_effect=RuntimeError("model missing")):
             with self.assertRaises(HTTPException) as ctx:
                 healthz()
         self.assertEqual(503, ctx.exception.status_code)
-        self.assertIn("spaCy", ctx.exception.detail)
+        self.assertEqual("spaCy unavailable", ctx.exception.detail)
+        self.assertNotIn("model missing", ctx.exception.detail)
 
 
 if __name__ == "__main__":

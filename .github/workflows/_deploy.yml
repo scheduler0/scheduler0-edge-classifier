@@ -11,6 +11,11 @@ on:
         description: "Short environment name used to derive resource names (staging or production)"
         required: true
         type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
 
 jobs:
   deploy:
@@ -50,7 +55,6 @@ jobs:
       run: |
         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "account_id=${AWS_ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
-        echo "AWS Account ID: ${AWS_ACCOUNT_ID}"
 
     - name: Generate task definition from template
       run: |
@@ -69,7 +73,6 @@ jobs:
             "${TEMPLATE_FILE}" > "${OUTPUT_FILE}"
         
         echo "Task definition generated successfully"
-        cat "${OUTPUT_FILE}"
 
     # Runtime config comes from SSM / the task definition (Doppler syncs SSM
     # natively); the deploy needs nothing from Doppler, so the CLI is not installed.
