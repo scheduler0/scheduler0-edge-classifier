@@ -1,0 +1,376 @@
+name: Security Audit & Vulnerability Reporting
+
+on:
+  # Run weekly on Monday mornings
+  schedule:
+    - cron: '0 9 * * 1'  # 9 AM UTC every Monday
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      severity_filter:
+        description: 'Minimum severity to report (critical, high, medium, low)'
+        required: false
+        default: 'medium'
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+      create_issues:
+        description: 'Create GitHub issues for findings'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+  security-events: write
+
+jobs:
+  security-scan:
+    name: Run Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Install security scanning tools
+        run: |
+          pip install safety pip-audit bandit semgrep
+      
+      - name: Run Safety check (Python dependencies)
+        id: safety
+        continue-on-error: true
+        run: |
+          safety check --file requirements.txt --json --output safety-report.json || true
+          if [ -f safety-report.json ]; then
+            echo "Safety scan completed"
+            cat safety-report.json
+          fi
+      
+      - name: Run pip-audit (Python dependencies)
+        id: pip-audit
+        continue-on-error: true
+        run: |
+          pip-audit --format json --output pip-audit-report.json || true
+          if [ -f pip-audit-report.json ]; then
+            echo "pip-audit scan completed"
+            cat pip-audit-report.json
+          fi
+      
+      - name: Run Bandit (Python code security)
+        id: bandit
+        continue-on-error: true
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+          if [ -f bandit-report.json ]; then
+            echo "Bandit scan completed"
+            cat bandit-report.json
+          fi
+      
+      - name: Run Semgrep (Code patterns)
+        id: semgrep
+        continue-on-error: true
+        run: |
+          semgrep --config=auto --json --output semgrep-report.json || true
+          if [ -f semgrep-report.json ]; then
+            echo "Semgrep scan completed"
+            cat semgrep-report.json
+          fi
+      
+      - name: Check Docker security
+        id: docker-scan
+        continue-on-error: true
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "Checking Dockerfile for security issues..."
+            # Check for root user
+            if grep -q "USER root" Dockerfile || ! grep -q "USER" Dockerfile; then
+              echo "WARNING: Container may run as root"
+            fi
+            # Check for latest tags
+            if grep -q ":latest" Dockerfile; then
+              echo "WARNING: Using :latest tags in base images"
+            fi
+          fi
+      
+      - name: Parse results and create report
+        id: parse-results
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          from pathlib import Path
+          
+          def load_json_report(filename):
+              """Load JSON report if it exists."""
+              if Path(filename).exists():
+                  try:
+                      with open(filename) as f:
+                          return json.load(f)
+                  except:
+                      return None
+              return None
+          
+          # Load all reports
+          safety_report = load_json_report('safety-report.json')
+          pip_audit_report = load_json_report('pip-audit-report.json')
+          bandit_report = load_json_report('bandit-report.json')
+          semgrep_report = load_json_report('semgrep-report.json')
+          
+          findings = []
+          
+          # Parse Safety results
+          if safety_report and 'vulnerabilities' in safety_report:
+              for vuln in safety_report['vulnerabilities']:
+                  findings.append({
+                      'type': 'dependency',
+                      'severity': 'high',
+                      'title': f"Dependency vulnerability in {vuln.get('package', 'unknown')}",
+                      'description': vuln.get('advisory', 'No description'),
+                      'package': vuln.get('package'),
+                      'version': vuln.get('installed_version'),
+                      'cve': vuln.get('cve', 'N/A')
+                  })
+          
+          # Parse pip-audit results
+          if pip_audit_report and 'vulnerabilities' in pip_audit_report:
+              for vuln in pip_audit_report['vulnerabilities']:
+                  findings.append({
+                      'type': 'dependency',
+                      'severity': 'high',
+                      'title': f"Dependency vulnerability in {vuln.get('name', 'unknown')}",
+                      'description': vuln.get('description', 'No description'),
+                      'package': vuln.get('name'),
+                      'version': vuln.get('version'),
+                      'cve': vuln.get('id', 'N/A')
+                  })
+          
+          # Parse Bandit results
+          if bandit_report and 'results' in bandit_report:
+              for result in bandit_report['results']:
+                  severity = result.get('issue_severity', 'MEDIUM').lower()
+                  findings.append({
+                      'type': 'code',
+                      'severity': severity,
+                      'title': result.get('issue_text', 'Code security issue'),
+                      'description': result.get('issue_text', ''),
+                      'file': result.get('filename', ''),
+                      'line': result.get('line_number', ''),
+                      'cwe': result.get('issue_cwe', {}).get('id', 'N/A')
+                  })
+          
+          # Parse Semgrep results
+          if semgrep_report and 'results' in semgrep_report:
+              for result in semgrep_report['results']:
+                  severity = result.get('extra', {}).get('severity', 'WARNING').lower()
+                  findings.append({
+                      'type': 'code',
+                      'severity': severity if severity in ['critical', 'high', 'medium', 'low'] else 'medium',
+                      'title': result.get('check_id', 'Code pattern issue'),
+                      'description': result.get('extra', {}).get('message', ''),
+                      'file': result.get('path', ''),
+                      'line': result.get('start', {}).get('line', '')
+                  })
+          
+          # Save findings summary
+          with open('findings-summary.json', 'w') as f:
+              json.dump({
+                  'total': len(findings),
+                  'by_severity': {
+                      'critical': sum(1 for f in findings if f['severity'] == 'critical'),
+                      'high': sum(1 for f in findings if f['severity'] == 'high'),
+                      'medium': sum(1 for f in findings if f['severity'] == 'medium'),
+                      'low': sum(1 for f in findings if f['severity'] == 'low')
+                  },
+                  'by_type': {
+                      'dependency': sum(1 for f in findings if f['type'] == 'dependency'),
+                      'code': sum(1 for f in findings if f['type'] == 'code')
+                  },
+                  'findings': findings
+              }, f, indent=2)
+          
+          print(f"Found {len(findings)} security issues")
+          PYTHON_SCRIPT
+      
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            *-report.json
+            findings-summary.json
+          retention-days: 90
+      
+      - name: Create GitHub Issues for findings
+        if: github.event.inputs.create_issues != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MIN_SEVERITY: ${{ github.event.inputs.severity_filter || 'medium' }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          
+          # Load findings
+          if not Path('findings-summary.json').exists():
+              print("No findings to report")
+              exit(0)
+          
+          with open('findings-summary.json') as f:
+              data = json.load(f)
+          
+          findings = data.get('findings', [])
+          min_severity = os.environ.get('MIN_SEVERITY', 'medium')
+          
+          severity_order = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
+          min_level = severity_order.get(min_severity, 2)
+          
+          # Filter by severity
+          filtered_findings = [
+              f for f in findings 
+              if severity_order.get(f.get('severity', 'low'), 1) >= min_level
+          ]
+          
+          print(f"Creating issues for {len(filtered_findings)} findings (min severity: {min_severity})")
+          
+          # Check existing issues to avoid duplicates
+          try:
+              result = subprocess.run(
+                  ['gh', 'issue', 'list', '--label', 'security', '--json', 'title,number'],
+                  capture_output=True, text=True, check=True
+              )
+              existing_issues = json.loads(result.stdout)
+              existing_titles = {issue['title'] for issue in existing_issues}
+          except:
+              existing_titles = set()
+          
+          created_count = 0
+          skipped_count = 0
+          
+          for finding in filtered_findings[:20]:  # Limit to 20 issues per run
+              # Create issue title
+              title = f"[Security] {finding['type'].title()}: {finding['title']}"
+              
+              # Skip if similar issue already exists
+              if any(title.lower() in existing.lower() for existing in existing_titles):
+                  print(f"Skipping duplicate: {title}")
+                  skipped_count += 1
+                  continue
+              
+              # Create issue body
+              body = f"""## 🔒 Security Issue
+          
+          ### Severity
+          **{finding['severity'].upper()}**
+          
+          ### Category
+          {finding['type'].title()} Security Issue
+          
+          ### Description
+          {finding['description']}
+          
+          """
+              
+              # Add package-specific info
+              if finding['type'] == 'dependency':
+                  body += f"""### Affected Package
+          - **Package:** `{finding.get('package', 'N/A')}`
+          - **Version:** `{finding.get('version', 'N/A')}`
+          - **CVE:** {finding.get('cve', 'N/A')}
+          
+          """
+              
+              # Add code-specific info
+              if finding['type'] == 'code':
+                  body += f"""### Affected Code
+          - **File:** `{finding.get('file', 'N/A')}`
+          - **Line:** {finding.get('line', 'N/A')}
+          - **CWE:** {finding.get('cwe', 'N/A')}
+          
+          """
+              
+              body += """### Recommended Action
+          Please review this security finding and implement the recommended fix.
+          
+          ### References
+          - [Security Policy](./SECURITY.md)
+          - Automated finding from security audit workflow
+          
+          ---
+          *This issue was automatically created by the security audit workflow.*
+          """
+              
+              # Determine priority label
+              priority_label = f"priority: {finding['severity']}"
+              
+              # Create the issue
+              try:
+                  subprocess.run([
+                      'gh', 'issue', 'create',
+                      '--title', title,
+                      '--body', body,
+                      '--label', 'security,' + priority_label
+                  ], check=True, capture_output=True)
+                  print(f"Created issue: {title}")
+                  created_count += 1
+              except subprocess.CalledProcessError as e:
+                  print(f"Failed to create issue: {title}")
+                  print(f"Error: {e.stderr.decode()}")
+          
+          print(f"\nSummary: Created {created_count} issues, skipped {skipped_count} duplicates")
+          PYTHON_SCRIPT
+      
+      - name: Post summary comment
+        if: always()
+        run: |
+          echo "## Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          if [ -f findings-summary.json ]; then
+            python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          
+          with open('findings-summary.json') as f:
+              data = json.load(f)
+          
+          summary = f"""
+          ### Total Findings: {data['total']}
+          
+          #### By Severity
+          - 🔴 Critical: {data['by_severity']['critical']}
+          - 🟠 High: {data['by_severity']['high']}
+          - 🟡 Medium: {data['by_severity']['medium']}
+          - 🟢 Low: {data['by_severity']['low']}
+          
+          #### By Type
+          - 📦 Dependency Issues: {data['by_type']['dependency']}
+          - 💻 Code Issues: {data['by_type']['code']}
+          
+          For detailed reports, check the workflow artifacts.
+          """
+          
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write(summary)
+          PYTHON_SCRIPT
+          else
+            echo "No findings to report" >> $GITHUB_STEP_SUMMARY
+          fi
