@@ -13,13 +13,52 @@ on:
         type: string
 
 jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: "pip"
+
+    - name: Install dependencies
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Download spaCy model
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+      run: python -m spacy download en_core_web_sm
+
+    - name: Run tests
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+      run: python -m unittest discover -s tests -v
+
   deploy:
     name: Deploy Intent Classifier
+    needs: test
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
     permissions:
       contents: read
+      id-token: write
 
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -28,6 +67,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Derive ECS resource names
       run: |
@@ -38,7 +79,15 @@ jobs:
         echo "ECS_TASK_DEFINITION=${ENV_NAME}-scheduler0-intent-classifier-ecs-task-definition.json"  >> "$GITHUB_ENV"
         echo "CONTAINER_NAME=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
 
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials with OIDC
+      if: ${{ vars.AWS_ROLE_ARN != '' }}
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Configure AWS credentials with access keys
+      if: ${{ vars.AWS_ROLE_ARN == '' }}
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -50,7 +99,6 @@ jobs:
       run: |
         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "account_id=${AWS_ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
-        echo "AWS Account ID: ${AWS_ACCOUNT_ID}"
 
     - name: Generate task definition from template
       run: |
@@ -69,7 +117,6 @@ jobs:
             "${TEMPLATE_FILE}" > "${OUTPUT_FILE}"
         
         echo "Task definition generated successfully"
-        cat "${OUTPUT_FILE}"
 
     # Runtime config comes from SSM / the task definition (Doppler syncs SSM
     # natively); the deploy needs nothing from Doppler, so the CLI is not installed.

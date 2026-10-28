@@ -19,12 +19,9 @@ ones Duckling ships (``en_AU``, ``en_BZ``, ``en_CA``, ``en_GB``, ``en_IE``,
 Any other English tag falls back to ``en_GB``.
 """
 
-import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
-
-import requests
 
 try:  # Python 3.9+
     from zoneinfo import ZoneInfo
@@ -33,11 +30,7 @@ except ImportError:  # pragma: no cover - fallback for older interpreters
 
 # Reuse the singleton spaCy pipeline loaded by intent.py so we do not load the
 # model twice inside the same process.
-from intent import nlp
-
-# Duckling runs on the EC2 host; start.sh exports DUCKLING_URL with the host
-# private IP. Fall back to localhost for local development.
-DUCKLING_URL = os.environ.get("DUCKLING_URL", "http://127.0.0.1:8000/parse")
+from intent import nlp, post_duckling
 
 # Engine identity — stored on every response so past decisions can be reproduced.
 ENGINE_VERSION = "1.0.0"
@@ -151,9 +144,7 @@ def duckling_parse(text, reftime_ms=None, tz=None, locale="en_GB"):
     if tz:
         data["tz"] = tz
 
-    r = requests.post(DUCKLING_URL, data=data, timeout=3)
-    r.raise_for_status()
-    return r.json()
+    return post_duckling(data)
 
 
 # ---------------------------------------------------------------------------

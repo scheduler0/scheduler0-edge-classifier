@@ -9,43 +9,79 @@ on:
     types: [created]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   statuses: write
 
 jobs:
+  trust:
+    name: Reject forked pull requests
+    runs-on: ubuntu-latest
+    # Only run on PRs, not on issues. The head must belong to this repository:
+    # issue comments and reviews execute this workflow with a privileged token,
+    # so a fork's code must never be checked out or installed.
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request) || (github.event_name == 'pull_request_review')
+    outputs:
+      trusted: ${{ steps.trust.outputs.trusted }}
+      sha: ${{ steps.trust.outputs.sha }}
+      number: ${{ steps.trust.outputs.number }}
+    steps:
+    - name: Confirm the pull request head is in this repository
+      id: trust
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const expected = `${context.repo.owner}/${context.repo.repo}`;
+
+          async function loadPull(pullNumber) {
+            const { data } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber,
+            });
+            return data;
+          }
+
+          let pr;
+          if (context.eventName === "pull_request" || context.eventName === "pull_request_review") {
+            pr = context.payload.pull_request;
+          } else if (context.eventName === "issue_comment") {
+            pr = await loadPull(context.payload.issue.number);
+          } else {
+            core.setOutput("trusted", "false");
+            core.notice("No pull request to analyze.");
+            return;
+          }
+
+          const headRepo = pr.head && pr.head.repo && pr.head.repo.full_name
+            ? pr.head.repo.full_name
+            : "";
+          const sha = pr.head && pr.head.sha ? pr.head.sha : "";
+          const number = String(pr.number);
+          const trusted = headRepo === expected
+            && /^[a-f0-9]{40}$/.test(sha)
+            && /^[0-9]+$/.test(number);
+          core.setOutput("trusted", trusted ? "true" : "false");
+          core.setOutput("sha", trusted ? sha : "");
+          core.setOutput("number", trusted ? number : "");
+          if (!trusted) {
+            core.notice(`Skipping untrusted pull request head ${headRepo || "(missing)"}`);
+          }
+
   bugbot-review:
     name: Bugbot Review and Auto-Fix
+    needs: trust
     runs-on: ubuntu-latest
-    
-    # Only run on PRs, not on issues
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request) || (github.event_name == 'pull_request_review')
+    if: needs.trust.outputs.trusted == 'true'
     
     steps:
-    - name: Get PR number
-      id: pr
-      run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-        elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-          echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-          # Fetch the PR to get the head SHA
-          PR_DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
-          echo "sha=$(echo "$PR_DATA" | jq -r .head.sha)" >> $GITHUB_OUTPUT
-        else
-          echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-        fi
-    
     - name: Checkout PR branch
       uses: actions/checkout@v4
       with:
-        ref: ${{ steps.pr.outputs.sha }}
+        ref: ${{ needs.trust.outputs.sha }}
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: false
     
     - name: Configure Git
       run: |
@@ -58,6 +94,10 @@ jobs:
         python-version: '3.9'
     
     - name: Install dependencies
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+        ACTIONS_RUNTIME_TOKEN: ""
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
@@ -66,6 +106,10 @@ jobs:
     - name: Run tests to identify issues
       id: test
       continue-on-error: true
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+        ACTIONS_RUNTIME_TOKEN: ""
       run: |
         python -m unittest discover -s tests -v > test_output.txt 2>&1
         TEST_EXIT_CODE=$?
@@ -115,13 +159,16 @@ jobs:
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: ${{ steps.pr.outputs.number }},
+            issue_number: ${{ needs.trust.outputs.number }},
             body: body
           });
     
     - name: Run linting checks
       id: lint
       continue-on-error: true
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
       run: |
         # Check Python syntax
         python -m py_compile app.py intent.py suggestions.py 2>&1 | tee lint_output.txt
@@ -182,7 +229,7 @@ jobs:
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: ${{ steps.pr.outputs.number }},
+            issue_number: ${{ needs.trust.outputs.number }},
             body: report
           });
     
@@ -199,7 +246,7 @@ jobs:
           await github.rest.repos.createCommitStatus({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            sha: '${{ steps.pr.outputs.sha }}',
+            sha: '${{ needs.trust.outputs.sha }}',
             state: status,
             context: 'Bugbot Auto-Fix',
             description: description,

@@ -1,13 +1,81 @@
+import ipaddress
 import json
 import os
 import re
+from urllib.parse import urlparse
+
 import requests
 import spacy
 
 # Duckling runs on the EC2 host, not in this container; start.sh exports
 # DUCKLING_URL with the host private IP. Fall back to localhost for local dev.
-DUCKLING_URL = os.environ.get("DUCKLING_URL", "http://127.0.0.1:8000/parse")
+DEFAULT_DUCKLING_URL = "http://127.0.0.1:8000/parse"
+MAX_DUCKLING_RESPONSE_BYTES = 1_000_000
 nlp = spacy.load("en_core_web_sm")
+
+
+class DucklingConfigError(RuntimeError):
+    """DUCKLING_URL is missing, not HTTP, or points at a forbidden host."""
+
+
+def safe_duckling_url():
+    """Return the configured Duckling URL when it is safe to call.
+
+    The value is operator configuration. Link-local addresses are rejected so
+    a poisoned environment cannot send user text to instance metadata or the
+    ECS task-credential endpoint. Credentials embedded in the URL are rejected
+    so they are not written into logs by the HTTP client.
+    """
+    raw = os.environ.get("DUCKLING_URL", DEFAULT_DUCKLING_URL).strip()
+    parsed = urlparse(raw)
+    host = parsed.hostname
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not host
+        or parsed.username
+        or parsed.password
+    ):
+        raise DucklingConfigError(
+            "DUCKLING_URL must be an http(s) URL without embedded credentials"
+        )
+    lowered = host.lower().rstrip(".")
+    if lowered in {"metadata.google.internal", "metadata.internal"}:
+        raise DucklingConfigError("DUCKLING_URL must not target a metadata service")
+    if re.fullmatch(r"(?:0x[0-9a-f]+|\d+)", lowered):
+        raise DucklingConfigError("DUCKLING_URL host must be a hostname or dotted IP")
+    try:
+        ip = ipaddress.ip_address(lowered)
+    except ValueError:
+        ip = None
+    if ip is not None and (
+        ip.is_link_local
+        or ip.is_multicast
+        or ip.is_unspecified
+        or ip.is_reserved
+    ):
+        raise DucklingConfigError(
+            "DUCKLING_URL must not target a link-local or reserved address"
+        )
+    return raw
+
+
+def post_duckling(data):
+    """POST a parse request to Duckling and return the JSON body.
+
+    Redirects are disabled so a compromised parser cannot bounce the request
+    at another host. Oversized bodies are rejected before they are decoded.
+    """
+    response = requests.post(
+        safe_duckling_url(),
+        data=data,
+        timeout=3,
+        allow_redirects=False,
+    )
+    response.raise_for_status()
+    content = getattr(response, "content", b"")
+    if isinstance(content, (bytes, bytearray)) and len(content) > MAX_DUCKLING_RESPONSE_BYTES:
+        raise DucklingConfigError("Duckling response exceeds the size limit")
+    return response.json()
 
 
 # Single-word or start-of-message commands. Kept anchored so a bare
@@ -1010,17 +1078,13 @@ def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
     # en_GB, so switch locale when we need French temporal parsing.
     locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
-    r = requests.post(
-        DUCKLING_URL,
-        data={
+    return post_duckling(
+        {
             "locale": locale,
             "text": text,
             "dims": '["time","duration"]',
-        },
-        timeout=3,
+        }
     )
-    r.raise_for_status()
-    return r.json()
 
 
 def root_token(doc):
