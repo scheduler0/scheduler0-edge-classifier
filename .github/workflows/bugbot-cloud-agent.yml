@@ -21,43 +21,68 @@ on:
         default: analyze_only
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   statuses: write
 
 jobs:
-  cursor-agent-fix:
-    name: Cursor Cloud Agent Analysis
+  trust:
+    name: Reject forked pull requests
     runs-on: ubuntu-latest
-    
+    outputs:
+      trusted: ${{ steps.trust.outputs.trusted }}
+      sha: ${{ steps.trust.outputs.sha }}
+      branch: ${{ steps.trust.outputs.branch }}
+      base: ${{ steps.trust.outputs.base }}
     steps:
-    - name: Get PR Details
-      id: pr
+    - name: Confirm the pull request head is in this repository
+      id: trust
       uses: actions/github-script@v7
       with:
         script: |
+          const expected = `${context.repo.owner}/${context.repo.repo}`;
+          const pullNumber = ${{ inputs.pr_number }};
           const { data: pr } = await github.rest.pulls.get({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            pull_number: ${{ inputs.pr_number }}
+            pull_number: pullNumber,
           });
-          
-          core.setOutput('branch', pr.head.ref);
-          core.setOutput('sha', pr.head.sha);
-          core.setOutput('base', pr.base.ref);
-          
-          return pr;
+          const headRepo = pr.head && pr.head.repo && pr.head.repo.full_name
+            ? pr.head.repo.full_name
+            : "";
+          const sha = pr.head && pr.head.sha ? pr.head.sha : "";
+          const branch = pr.head && pr.head.ref ? pr.head.ref : "";
+          const base = pr.base && pr.base.ref ? pr.base.ref : "";
+          const refOk = /^[A-Za-z0-9._/-]+$/.test(branch) && /^[A-Za-z0-9._/-]+$/.test(base);
+          const trusted = headRepo === expected && /^[a-f0-9]{40}$/.test(sha) && refOk;
+          core.setOutput("trusted", trusted ? "true" : "false");
+          core.setOutput("sha", trusted ? sha : "");
+          core.setOutput("branch", trusted ? branch : "");
+          core.setOutput("base", trusted ? base : "");
+          if (!trusted) {
+            core.notice(`Skipping untrusted pull request head ${headRepo || "(missing)"}`);
+          }
+
+  cursor-agent-fix:
+    name: Cursor Cloud Agent Analysis
+    needs: trust
+    if: needs.trust.outputs.trusted == 'true'
+    runs-on: ubuntu-latest
     
+    steps:
     - name: Checkout PR Branch
       uses: actions/checkout@v4
       with:
-        ref: ${{ steps.pr.outputs.sha }}
+        ref: ${{ needs.trust.outputs.sha }}
         fetch-depth: 0
+        persist-credentials: false
     
     - name: Fetch base branch
+      env:
+        BASE_REF: ${{ needs.trust.outputs.base }}
       run: |
-        git fetch origin ${{ steps.pr.outputs.base }}
+        git fetch origin "$BASE_REF"
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -66,6 +91,10 @@ jobs:
         cache: 'pip'
     
     - name: Install dependencies
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+        ACTIONS_RUNTIME_TOKEN: ""
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
@@ -74,6 +103,10 @@ jobs:
     - name: Run tests and collect failures
       id: tests
       continue-on-error: true
+      env:
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
+        ACTIONS_RUNTIME_TOKEN: ""
       run: |
         set +e
         python -m unittest discover -s tests -v 2>&1 | tee test_results.txt
@@ -92,21 +125,23 @@ jobs:
     
     - name: Generate diff analysis
       if: steps.tests.outputs.failures_found == 'true'
+      env:
+        BASE_REF: ${{ needs.trust.outputs.base }}
+        HEAD_BRANCH: ${{ needs.trust.outputs.branch }}
+        FIX_MODE: ${{ inputs.fix_mode }}
+        GITHUB_TOKEN: ""
+        GH_TOKEN: ""
       run: |
-        # Get the diff for context
-        git diff origin/${{ steps.pr.outputs.base }}..HEAD > pr_diff.txt
-        
-        # Create a structured analysis file
-        cat > analysis_context.json << EOF
-        {
-          "pr_number": ${{ inputs.pr_number }},
-          "branch": "${{ steps.pr.outputs.branch }}",
-          "base_branch": "${{ steps.pr.outputs.base }}",
-          "test_failures": $(cat failures_summary.txt | jq -R . | jq -s .),
-          "fix_mode": "${{ inputs.fix_mode }}",
-          "repository": "${{ github.repository }}"
-        }
-        EOF
+        git diff "origin/${BASE_REF}..HEAD" > pr_diff.txt
+        jq -n \
+          --argjson pr_number "${{ inputs.pr_number }}" \
+          --arg branch "$HEAD_BRANCH" \
+          --arg base_branch "$BASE_REF" \
+          --arg fix_mode "$FIX_MODE" \
+          --arg repository "${{ github.repository }}" \
+          --argjson test_failures "$(jq -R . < failures_summary.txt | jq -s .)" \
+          '{pr_number:$pr_number,branch:$branch,base_branch:$base_branch,test_failures:$test_failures,fix_mode:$fix_mode,repository:$repository}' \
+          > analysis_context.json
     
     - name: Post analysis to PR
       uses: actions/github-script@v7
@@ -194,11 +229,13 @@ jobs:
     
     - name: Summary
       if: always()
+      env:
+        HEAD_BRANCH: ${{ needs.trust.outputs.branch }}
       run: |
         echo "## 📊 Cursor Cloud Agent Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **PR**: #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Branch**: ${{ steps.pr.outputs.branch }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${HEAD_BRANCH}" >> $GITHUB_STEP_SUMMARY
         echo "- **Fix Mode**: ${{ inputs.fix_mode }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Test Result**: ${{ steps.tests.outputs.exit_code == '0' && '✅ Passing' || '❌ Failures' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Failures Found**: ${{ steps.tests.outputs.failure_count }}" >> $GITHUB_STEP_SUMMARY

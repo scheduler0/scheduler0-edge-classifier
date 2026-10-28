@@ -6,6 +6,12 @@
             "cpu": 1024,
             "memory": 2048,
             "essential": true,
+            "user": "10001:10001",
+            "linuxParameters": {
+                "capabilities": {
+                    "drop": ["ALL"]
+                }
+            },
             "portMappings": [
                 {
                     "containerPort": 8080,
@@ -75,6 +81,5 @@
     ],
     "cpu": "1024",
     "memory": "2048",
-    "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role",
-    "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role"
+    "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/production_scheduler0_ecs_task_execution_role"
 }

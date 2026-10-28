@@ -82,7 +82,30 @@ python3 -m pip install --upgrade pip --no-cache-dir
 
 echo "==> Installing Haskell Stack if missing"
 if ! command -v stack >/dev/null 2>&1; then
-  curl -sSL https://get.haskellstack.org/ | sh
+  # Pinned release with checksums published on the Stack GitHub release.
+  # Do not pipe the upstream installer to a shell.
+  STACK_VERSION="2.15.7"
+  case "$(uname -m)" in
+    x86_64)
+      STACK_ARCH="x86_64"
+      STACK_SHA256="4e635d6168f7578a5694a0d473c980c3c7ed35d971acae969de1fd48ef14e030"
+      ;;
+    aarch64|arm64)
+      STACK_ARCH="aarch64"
+      STACK_SHA256="f0c4b038c7e895902e133a2f4c4c217e03c4be44aa5da48aec9f7947f4af090b"
+      ;;
+    *)
+      echo "ERROR: unsupported architecture for Stack: $(uname -m)"
+      exit 1
+      ;;
+  esac
+  STACK_TMP="$(mktemp)"
+  STACK_URL="https://github.com/commercialhaskell/stack/releases/download/v${STACK_VERSION}/stack-${STACK_VERSION}-linux-${STACK_ARCH}.tar.gz"
+  curl -fsSL "$STACK_URL" -o "$STACK_TMP"
+  echo "${STACK_SHA256}  ${STACK_TMP}" | sha256sum --strict --check
+  tar -xzf "$STACK_TMP" -C /tmp "stack-${STACK_VERSION}-linux-${STACK_ARCH}/stack"
+  sudo install -m 0755 "/tmp/stack-${STACK_VERSION}-linux-${STACK_ARCH}/stack" /usr/local/bin/stack
+  rm -rf "$STACK_TMP" "/tmp/stack-${STACK_VERSION}-linux-${STACK_ARCH}"
 fi
 
 echo "==> Stack version"

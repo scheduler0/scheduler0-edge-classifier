@@ -87,7 +87,8 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN > /dev/null 2>&1; then
 fi
 
 export DUCKLING_URL
-echo "==> Starting Uvicorn on http://127.0.0.1:${PORT} (Ctrl-C to stop)"
+HOST="${HOST:-127.0.0.1}"
+echo "==> Starting Uvicorn on http://${HOST}:${PORT} (Ctrl-C to stop)"
 echo "    Duckling container '${DUCKLING_CONTAINER}' keeps running; stop it with:"
 echo "    docker stop ${DUCKLING_CONTAINER}"
-exec .venv/bin/uvicorn app:app --host 0.0.0.0 --port "$PORT" --reload
+exec .venv/bin/uvicorn app:app --host "$HOST" --port "$PORT" --reload --no-server-header
