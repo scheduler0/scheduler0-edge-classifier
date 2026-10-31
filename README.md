@@ -2,7 +2,7 @@
 
 Intent classification service for Scheduler0. It decides whether a user message is a scheduling request, needs clarification, or should be rejected before the main scheduler workflow continues.
 
-The service is exposed as a small FastAPI app and is deployed to ECS on dedicated EC2 capacity.
+The service is exposed as a small FastAPI app and is deployed to ECS (EC2 launch type) on the shared scheduler0 EC2 node, the same instance that runs `scheduler0-private`. Duckling runs on that host as a systemd unit; the Python venv and Duckling binary are baked into the node's golden AMI.
 
 ## What It Does
 
@@ -126,7 +126,7 @@ For plain local Docker runs, prefer running Uvicorn directly from a local Python
 
 ## EC2 Bootstrap
 
-`install_scheduler0_nlp.sh` prepares the dedicated classifier EC2 instance:
+`install_scheduler0_nlp.sh` builds the artifacts that are baked into the scheduler0 node golden AMI (the canonical copy lives in `scheduler0-terraform/common/launch_template/`). Run it on a base ECS-optimized AL2023 instance, then image it:
 
 ```bash
 ./install_scheduler0_nlp.sh --ci
@@ -144,7 +144,7 @@ The staging deployment workflow is triggered by pushes to the `staging` branch:
 
 The reusable workflow builds the image, pushes it to ECR, renders `staging-scheduler0-intent-classifier-ecs-task-definition.json`, registers a new task definition, and updates the ECS service.
 
-The task definition pins the service to dedicated classifier capacity:
+The task definition pins the service to the scheduler0 EC2 node via an instance attribute (the node carries both `scheduler0.private` and `scheduler0.intent-classifier`):
 
 ```json
 {
@@ -156,7 +156,7 @@ The task definition pins the service to dedicated classifier capacity:
 The matching Terraform user data configures the EC2 instance with:
 
 ```text
-ECS_INSTANCE_ATTRIBUTES={"scheduler0.intent-classifier":"true"}
+ECS_INSTANCE_ATTRIBUTES={"scheduler0.private": "true", "scheduler0.intent-classifier": "true"}
 ```
 
 ## Useful Troubleshooting
