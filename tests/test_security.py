@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import socket
 import subprocess
 import unittest
@@ -35,6 +36,22 @@ from suggestions import duckling_parse, get_zone, parse_hhmm, sanitize_timezone
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Lowest versions that carry the security fixes we depend on. Dependabot may
+# raise the floors in requirements.txt above these without touching this test.
+SECURITY_FLOORS = {
+    "starlette": (1, 3, 1),
+    "requests": (2, 33, 0),
+    "urllib3": (2, 8, 0),
+    "python-multipart": (0, 0, 31),
+}
+
+
+def declared_floors(text):
+    floors = {}
+    for name, version in re.findall(r"([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?>=([0-9][0-9.]*)", text):
+        floors[name.lower()] = tuple(int(part) for part in version.strip(".").split("."))
+    return floors
 
 
 class DucklingUrlTests(unittest.TestCase):
@@ -228,10 +245,13 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn('pip==26.2.2', script)
         self.assertNotIn("spacy download", script)
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("starlette>=1.10.0", requirements)
-        self.assertIn("requests>=2.33.0", requirements)
-        self.assertIn("urllib3>=2.8.0", requirements)
-        self.assertIn("python-multipart>=0.0.33", requirements)
+        fallback = script.split('if [ -f "${SCRIPT_DIR}/requirements.txt" ]', 1)[1].split("\nfi", 1)[0]
+        for source, text in (("requirements.txt", requirements), ("bootstrap fallback", fallback)):
+            floors = declared_floors(text)
+            for package, minimum in SECURITY_FLOORS.items():
+                with self.subTest(source=source, package=package):
+                    self.assertIn(package, floors)
+                    self.assertGreaterEqual(floors[package], minimum)
         self.assertIn(
             "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889",
             requirements,
