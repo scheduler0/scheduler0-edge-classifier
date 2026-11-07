@@ -9,8 +9,11 @@ concurrency:
   group: intent-classifier-deploy-staging-${{ github.ref }}
   cancel-in-progress: true
 
+# id-token: write lets _deploy.yml mint a GitHub OIDC token when AWS_ROLE_ARN
+# is set; a called workflow cannot raise permissions above its caller's.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
