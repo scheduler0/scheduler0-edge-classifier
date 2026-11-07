@@ -15,7 +15,8 @@ updates:
       pip:
         patterns: ["*"]
     ignore:
-      # spaCy minor bumps need a matching en_core_web_sm wheel, re-baselined
+      # spaCy bumps need a matching en_core_web_sm wheel, re-baselined
       # classifier tests, and a golden AMI rebuild. Do them by hand.
+      # update-types does not apply to range pins like >=3.7.0,<3.8.0, so the
+      # whole package is ignored.
       - dependency-name: spacy
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
