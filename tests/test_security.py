@@ -231,7 +231,7 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn("starlette>=1.3.1", requirements)
         self.assertIn("requests>=2.33.0", requirements)
         self.assertIn("urllib3>=2.8.0", requirements)
-        self.assertIn("python-multipart>=0.0.31", requirements)
+        self.assertIn("python-multipart>=0.0.33", requirements)
         self.assertIn(
             "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889",
             requirements,
