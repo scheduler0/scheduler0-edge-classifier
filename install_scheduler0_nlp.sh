@@ -307,7 +307,7 @@ else
     'fastapi>=0.135.1' \
     'starlette>=1.3.1' \
     'uvicorn[standard]>=0.30.0' \
-    'python-multipart>=0.0.31' \
+    'python-multipart>=0.0.33' \
     'requests>=2.33.0' \
     'urllib3>=2.8.0' \
     'spacy>=3.7.0,<3.8.0'
