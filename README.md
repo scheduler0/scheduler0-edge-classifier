@@ -55,7 +55,6 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
 
 # Start the service (includes Duckling via Docker)
 ./run-local.sh
@@ -185,19 +184,17 @@ The conversation analysis engine:
 If you prefer to run Duckling outside Docker:
 
 ```bash
-# Install Haskell Stack
-curl -sSL https://get.haskellstack.org/ | sh
-
-# Run the full bootstrap (includes Duckling build)
+# Installs pinned Stack, Duckling, and the hashed spaCy model.
 ./install_scheduler0_nlp.sh
 
-# Start Duckling
+# Start Duckling on loopback. The example server listens on every interface
+# unless --address is set.
 cd ~/workspace/duckling
-stack exec duckling-example-exe &
+stack exec -- duckling-example-exe -b 127.0.0.1 -p 8000 &
 
 # Start the API
 source .venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 8080 --reload
+uvicorn app:app --host 127.0.0.1 --port 8080 --reload
 ```
 
 ### Development Tools

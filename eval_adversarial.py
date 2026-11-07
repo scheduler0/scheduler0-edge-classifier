@@ -6,6 +6,7 @@ import ast
 import json
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -151,13 +152,51 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def loopback_base_url(base_url: str) -> str:
+    """Accept only a loopback classifier URL.
+
+    The tool sends health checks and message text to this URL. A non-loopback
+    value would turn a local eval into a request against whatever host was
+    passed, including a redirect target. ``hostname`` stops at a NUL, so the
+    raw netloc has to match the host and port that property reports. ``localhost``
+    is rewritten to ``127.0.0.1`` so the name is not resolved again.
+    """
+    if not base_url or any(char in base_url for char in "\r\n\t "):
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    parts = urllib.parse.urlsplit(base_url)
+    if (
+        parts.scheme not in {"http", "https"}
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+    ):
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    try:
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except ValueError as exc:
+        raise RuntimeError("classifier URL must be an http(s) loopback address") from exc
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    if port is not None and not 1 <= port <= 65535:
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    shown = "[::1]" if host == "::1" else host
+    expected = shown if port is None else f"{shown}:{port}"
+    if parts.netloc.lower() != expected:
+        raise RuntimeError("classifier URL must be an http(s) loopback address")
+    pinned_host = "[::1]" if host == "::1" else "127.0.0.1"
+    pinned = pinned_host if port is None else f"{pinned_host}:{port}"
+    return urllib.parse.urlunsplit((parts.scheme, pinned, "", "", ""))
+
+
 def check_prerequisites(
     base_url: str, claude_path: Path, session: requests.Session
 ) -> None:
     if not claude_path.is_file():
         raise RuntimeError(f"Claude Code CLI not found at {claude_path}")
     try:
-        response = session.get(f"{base_url}/healthz", timeout=5)
+        response = session.get(f"{base_url}/healthz", timeout=5, allow_redirects=False)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise RuntimeError(
@@ -285,6 +324,7 @@ def classify(
         f"{base_url}/v1/intents/classify",
         json={"text": text},
         timeout=10,
+        allow_redirects=False,
     )
     response.raise_for_status()
     payload = response.json()
@@ -354,8 +394,14 @@ def add_regression_test(
 
 def main() -> int:
     args = parse_args()
-    base_url = args.base_url.rstrip("/")
+    try:
+        base_url = loopback_base_url(args.base_url)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     session = requests.Session()
+    session.trust_env = False
+    session.max_redirects = 0
 
     try:
         check_prerequisites(base_url, args.claude_path.expanduser(), session)

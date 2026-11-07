@@ -50,7 +50,7 @@ This project adheres to a code of conduct. By participating, you are expected to
 2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
-   python -m spacy download en_core_web_sm
+   # requirements.txt installs the hashed en_core_web_sm wheel
    ```
 
 3. **Start the development server**:
@@ -81,7 +81,7 @@ If you prefer not to use Docker:
 3. **Start the API**:
    ```bash
    source .venv/bin/activate
-   uvicorn app:app --host 0.0.0.0 --port 8080 --reload
+   uvicorn app:app --host 127.0.0.1 --port 8080 --reload
    ```
 
 ## Making Changes

@@ -366,36 +366,35 @@ cat /var/lib/scheduler0-intent-classifier/bootstrap-complete
 
 ### Start Duckling Service
 
-Create a systemd service to keep Duckling running:
+> **Production note:** the shared scheduler0 EC2 node does not use this unit. `scheduler0-terraform/common/launch_template/user_data.sh` writes its own `duckling.service` and `/opt/duckling/host_ip` at boot, so the RFC1918 bind below only applies there once that launch template is updated to match.
+
+`install_scheduler0_nlp.sh --ci` installs `duckling.service`. The example server binds every interface unless `--address` is set, so the unit runs as the unprivileged `duckling` user and listens only on the host's RFC1918 address. It writes that address to `/opt/duckling/host_ip` for the container. Do not start `duckling-example-exe` without `-b`.
 
 ```ini
 # /etc/systemd/system/duckling.service
 [Unit]
 Description=Duckling Time Parser
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=duckling
+Group=duckling
 WorkingDirectory=/opt/duckling
-ExecStart=/opt/duckling/duckling-example-exe
+Environment=LD_LIBRARY_PATH=/opt/duckling/lib
+Environment=DUCKLING_PORT=8000
+Environment=DUCKLING_EXPORT_DIR=/opt/duckling
+ExecStartPre=+/opt/duckling/duckling-bind.sh --write-host-ip
+ExecStart=/opt/duckling/duckling-bind.sh --serve
 Restart=always
 RestartSec=10
-Environment="LD_LIBRARY_PATH=/opt/duckling/lib"
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start:
-```bash
-systemctl daemon-reload
-systemctl enable duckling
-systemctl start duckling
-
-# Write host IP for containers
-echo $(hostname -I | awk '{print $1}') > /opt/duckling/host_ip
-```
+`duckling-bind.sh --serve` refuses a `host_ip` value that is not RFC1918.
 
 ## Deployment
 
@@ -428,11 +427,11 @@ aws ecr get-login-password --region us-east-1 | \
 # Build image
 docker build -t scheduler0-intent-classifier .
 
-# Tag and push
-docker tag scheduler0-intent-classifier:latest \
-  <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:latest
+# Tag and push an immutable tag. Do not push :latest.
+docker tag scheduler0-intent-classifier \
+  <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:manual
 
-docker push <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:latest
+docker push <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/staging-scheduler0-intent-classifier:manual
 
 # Update service
 aws ecs update-service \
