@@ -217,7 +217,7 @@ python -m unittest discover -s tests -v
 
 ### AWS ECS Deployment
 
-This service is designed to run on AWS ECS with dedicated EC2 capacity. See the comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide for:
+This service runs on AWS ECS (EC2 launch type) on the shared scheduler0 EC2 node, the same instance that runs `scheduler0-private`. Duckling runs on that host as a systemd unit, and the Python venv and Duckling binary are baked into the node's golden AMI (built with `install_scheduler0_nlp.sh`; the canonical copy lives in `scheduler0-terraform/common/launch_template/`). See the comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide for:
 
 - Infrastructure setup (ECS, ECR, IAM, VPC)
 - EC2 bootstrap process

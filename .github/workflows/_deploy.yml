@@ -129,10 +129,12 @@ jobs:
           --output table
 
         # Wait up to 3 minutes for the service to stabilize.
-        # On ECS/EC2 the container instance may still be bootstrapping (NLP install
-        # takes 60-90 min), so a timeout here is expected and non-fatal.  CloudWatch
+        # The task runs on the shared scheduler0 EC2 node (the same instance as
+        # scheduler0-private-1; Duckling + the NLP venv are baked into its golden
+        # AMI), so placement is normally immediate. A timeout is still non-fatal:
+        # the container health check has a 300 s start period, and CloudWatch
         # alarms are the authoritative signal for ongoing service health.
-        echo "Waiting up to 3 min for service to stabilize (non-fatal if EC2 is still bootstrapping)..."
+        echo "Waiting up to 3 min for service to stabilize (non-fatal if the EC2 node is still bootstrapping)..."
         aws ecs wait services-stable \
           --cluster ${{ env.ECS_CLUSTER }} \
           --services ${{ env.ECS_SERVICE }} \
@@ -172,10 +174,11 @@ jobs:
         echo "   aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment"
         echo "2. Check service events:"
         echo "   aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].events[0:5]'"
-        echo "3. Check bootstrap log on EC2 instance:"
-        echo "   tail -f /var/log/scheduler0-intent-classifier-bootstrap.log"
-        echo "4. Verify bootstrap marker exists:"
-        echo "   cat /var/lib/scheduler0-intent-classifier/bootstrap-complete"
+        echo "3. Check the node bootstrap log on the shared scheduler0 EC2 instance (over SSM):"
+        echo "   tail -f /var/log/cloud-init-output.log"
+        echo "4. Verify the node carries the placement attribute and Duckling is up:"
+        echo "   grep ECS_INSTANCE_ATTRIBUTES /etc/ecs/ecs.config   # expects scheduler0.intent-classifier"
+        echo "   systemctl status duckling; tail -20 /var/log/duckling.log"
         echo "5. Verify Duckling binary:"
         echo "   /opt/duckling/duckling-example-exe --help"
         echo "======================================"
