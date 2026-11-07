@@ -131,8 +131,8 @@ install_pinned_spacy_model() {
   trap "rm -f '${tmp}'" RETURN
   curl -fsSL \
     -o "$tmp" \
-    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
-  echo "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889  ${tmp}" | sha256sum -c -
+    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+  echo "1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85  ${tmp}" | sha256sum -c -
   python -m pip install "$tmp"
 }
 
@@ -310,7 +310,7 @@ else
     'python-multipart>=0.0.31' \
     'requests>=2.33.0' \
     'urllib3>=2.8.0' \
-    'spacy>=3.7.0,<3.8.0'
+    'spacy>=3.8.18,<3.9.0'
   install_pinned_spacy_model
 fi
 

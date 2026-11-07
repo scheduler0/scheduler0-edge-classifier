@@ -233,7 +233,7 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn("urllib3>=2.8.0", requirements)
         self.assertIn("python-multipart>=0.0.31", requirements)
         self.assertIn(
-            "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889",
+            "1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85",
             requirements,
         )
         deploy = (ROOT / ".github" / "workflows" / "_deploy.yml").read_text(encoding="utf-8")
