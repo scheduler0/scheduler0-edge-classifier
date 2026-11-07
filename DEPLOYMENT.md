@@ -101,7 +101,7 @@ This guide covers deploying the scheduler0-edge-classifier service to AWS ECS.
 - AWS CLI configured
 - Docker installed
 - GitHub repository access
-- Python 3.9+
+- Python 3.10+
 
 ## Infrastructure Setup
 

@@ -23,7 +23,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
 
-try:  # Python 3.9+
+try:  # Python 3.10+
     from zoneinfo import ZoneInfo
 except ImportError:  # pragma: no cover - fallback for older interpreters
     ZoneInfo = None

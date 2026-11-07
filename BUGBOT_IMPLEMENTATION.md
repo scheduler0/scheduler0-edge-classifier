@@ -174,7 +174,7 @@ graph TD
 
 ### External Dependencies
 
-- **Python 3.9+**: Runtime environment
+- **Python 3.10+**: Runtime environment
 - **pip**: Package management
 - **spaCy**: NLP processing
 - **unittest**: Test framework

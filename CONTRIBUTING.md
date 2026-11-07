@@ -34,7 +34,7 @@ This project adheres to a code of conduct. By participating, you are expected to
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Docker (for running Duckling locally)
 - Git
 - 4GB+ RAM (for spaCy and Duckling)

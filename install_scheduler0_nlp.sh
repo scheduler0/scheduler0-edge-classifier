@@ -84,12 +84,12 @@ sudo "$PM" install -y \
   git \
   wget \
   which \
-  python3 \
-  python3-devel
+  python3.12 \
+  python3.12-devel
 # curl-minimal is pre-installed on Amazon Linux 2023 EC2 and conflicts with the
 # full curl package; skip it — curl-minimal provides the curl command we need.
 # python3-pip is not reliably in the AL2023 dnf repos; bootstrap via ensurepip.
-python3 -m ensurepip --upgrade
+python3.12 -m ensurepip --upgrade
 
 install_pinned_stack() {
   local arch sha tmp name
@@ -288,7 +288,7 @@ stack setup
 stack build
 
 echo "==> Creating Python virtualenv"
-python3 -m venv "$NLP_DIR"
+python3.12 -m venv "$NLP_DIR"
 
 echo "==> Installing Python NLP dependencies"
 source "$NLP_DIR/bin/activate"

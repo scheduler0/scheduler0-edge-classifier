@@ -226,7 +226,7 @@ Add status badges to your README:
 
 **Check**:
 1. All dependencies are listed in `requirements.txt`
-2. Python version matches (3.9+ required)
+2. Python version matches (3.10+ required)
 3. External dependencies (e.g., Duckling) are available
 4. Environment variables are set correctly
 

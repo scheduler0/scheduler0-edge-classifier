@@ -39,7 +39,7 @@ DUCKLING_URL="http://127.0.0.1:${DUCKLING_PORT}/parse"
 # ── Sanity checks ─────────────────────────────────────────────────────────────
 if [ ! -x .venv/bin/uvicorn ]; then
   echo "ERROR: .venv/bin/uvicorn not found. Set up the venv first:"
-  echo "  python3 -m venv .venv"
+  echo "  python3.10 -m venv .venv  # or python3.12, python3.11, etc."
   echo "  source .venv/bin/activate"
   echo "  pip install -r requirements.txt"
   exit 1

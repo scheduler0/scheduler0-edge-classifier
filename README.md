@@ -1,9 +1,9 @@
 # Scheduler0 Edge Classifier
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
-[![spaCy](https://img.shields.io/badge/spaCy-3.7-blue.svg)](https://spacy.io/)
+[![spaCy](https://img.shields.io/badge/spaCy-3.8-blue.svg)](https://spacy.io/)
 [![Tests](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml/badge.svg)](https://github.com/scheduler0/scheduler0-edge-classifier/actions/workflows/test.yml)
 [![Bugbot Auto-Fix](https://img.shields.io/badge/Bugbot-Enabled-brightgreen)](BUGBOT_SETUP.md)
 
@@ -38,7 +38,7 @@ The service exposes a FastAPI REST API and includes a conversation analysis engi
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Docker (for Duckling time parser)
 - 4GB+ RAM recommended
 
