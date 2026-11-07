@@ -228,7 +228,7 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn('pip==26.2.2', script)
         self.assertNotIn("spacy download", script)
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("starlette>=1.3.1", requirements)
+        self.assertIn("starlette>=1.10.0", requirements)
         self.assertIn("requests>=2.33.0", requirements)
         self.assertIn("urllib3>=2.8.0", requirements)
         self.assertIn("python-multipart>=0.0.31", requirements)

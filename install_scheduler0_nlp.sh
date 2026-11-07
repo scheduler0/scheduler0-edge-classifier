@@ -305,7 +305,7 @@ else
   # lower bounds as requirements.txt so this path cannot float to an older set.
   python -m pip install \
     'fastapi>=0.135.1' \
-    'starlette>=1.3.1' \
+    'starlette>=1.10.0' \
     'uvicorn[standard]>=0.30.0' \
     'python-multipart>=0.0.31' \
     'requests>=2.33.0' \
