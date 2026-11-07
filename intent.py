@@ -1,6 +1,10 @@
+import ipaddress
 import json
 import os
 import re
+import socket
+import urllib.parse
+
 import requests
 import spacy
 
@@ -1006,21 +1010,235 @@ def text_looks_french(text):
     return True
 
 
+_BLOCKED_DUCKLING_HOSTS = {
+    "169.254.169.254",
+    "metadata.google.internal",
+    "metadata.internal",
+}
+_AWS_IPV6_IMDS = ipaddress.ip_address("fd00:ec2::254")
+
+
+def _normalize_address(address):
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def _address_is_blocked(address):
+    """Allow only loopback and private addresses Duckling actually uses.
+
+    Link-local is private on some Python versions and still has to be refused:
+    169.254.169.254 is the instance metadata service. Decimal, octal, and hex
+    hosts are not literal IPs to ipaddress, so callers resolve those first.
+    """
+    address = _normalize_address(address)
+    if address == _AWS_IPV6_IMDS or str(address) in _BLOCKED_DUCKLING_HOSTS:
+        return True
+    if address.is_loopback:
+        return False
+    if address.is_unspecified or address.is_multicast or address.is_link_local or address.is_reserved:
+        return True
+    return not address.is_private
+
+
+def _resolved_addresses(host):
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError("DUCKLING_URL host did not resolve") from exc
+    addresses = []
+    for info in infos:
+        try:
+            addresses.append(ipaddress.ip_address(info[4][0]))
+        except ValueError as exc:
+            raise ValueError("DUCKLING_URL host resolved to an unexpected address") from exc
+    if not addresses:
+        raise ValueError("DUCKLING_URL host did not resolve")
+    return addresses
+
+
+def _canonical_netloc(parts):
+    """Reject a netloc whose raw text is not the host and port urlsplit reports.
+
+    ``hostname`` stops at a NUL or a carriage return, so
+    ``10.0.0.8:8000%00.example`` still reports the host ``10.0.0.8``. The raw
+    netloc is what the client sends. A leading-zero port (``:08000``) is also
+    refused because some parsers read it as octal and others as decimal.
+    """
+    try:
+        host = parts.hostname
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("DUCKLING_URL host is not canonical") from exc
+    if (
+        not host
+        or host.endswith(".")
+        or any(ord(char) < 33 or char in "%@\\" for char in host)
+    ):
+        raise ValueError("DUCKLING_URL host is not canonical")
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("DUCKLING_URL port is not canonical")
+    literal = f"[{host}]" if ":" in host else host
+    expected = literal if port is None else f"{literal}:{port}"
+    if parts.netloc.lower() != expected.lower():
+        raise ValueError("DUCKLING_URL host is not canonical")
+
+
+def _duckling_url_parts(url=None):
+    """Return the candidate URL, its split, and the normalized host.
+
+    This does not resolve DNS. Callers that need an address check do that once.
+    """
+    candidate = (DUCKLING_URL if url is None else url).strip()
+    if not candidate or any(ch in candidate for ch in "\r\n\t "):
+        raise ValueError("DUCKLING_URL is empty or contains whitespace")
+    parts = urllib.parse.urlsplit(candidate)
+    if parts.scheme not in {"http", "https"}:
+        raise ValueError("DUCKLING_URL must use http or https")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("DUCKLING_URL must not include credentials")
+    if parts.fragment:
+        raise ValueError("DUCKLING_URL must not include a fragment")
+    _canonical_netloc(parts)
+    host = parts.hostname
+    host_key = host.lower().rstrip(".")
+    if host_key in _BLOCKED_DUCKLING_HOSTS or host_key.endswith(".metadata.google.internal"):
+        raise ValueError("DUCKLING_URL host is not allowed")
+    return candidate, parts, host_key
+
+
+def _allowed_addresses(host_key):
+    """Resolve a host at most once and refuse any blocked answer."""
+    try:
+        addresses = [ipaddress.ip_address(host_key)]
+    except ValueError:
+        addresses = _resolved_addresses(host_key)
+    if not addresses or any(_address_is_blocked(address) for address in addresses):
+        raise ValueError("DUCKLING_URL address is not allowed")
+    return addresses
+
+
+def validated_duckling_url(url=None):
+    """Return a Duckling URL that is safe to request.
+
+    Private hosts stay allowed because Duckling runs on the EC2 host. Link-local,
+    public, and metadata addresses are refused so a poisoned DUCKLING_URL cannot
+    reach the instance metadata service or an external host. Hostnames are
+    resolved once and every address is checked, which rejects decimal and hex
+    forms that getaddrinfo maps onto the metadata service. Callers must not
+    follow redirects.
+    """
+    candidate, _parts, host_key = _duckling_url_parts(url)
+    _allowed_addresses(host_key)
+    return candidate
+
+
+def _address_literal(address):
+    address = _normalize_address(address)
+    if address.version == 6:
+        return f"[{address}]"
+    return str(address)
+
+
+def pinned_duckling_url(url=None):
+    """Return a URL whose host is the address from a single allow-list check.
+
+    ``requests`` resolves a name again when it connects. A second lookup can
+    point the socket at a different private address, or at the metadata
+    service, after the first answer was accepted. This uses the address from
+    the one lookup we checked.
+    """
+    _candidate, parts, host_key = _duckling_url_parts(url)
+    addresses = _allowed_addresses(host_key)
+    literal = _address_literal(addresses[0])
+    netloc = literal if parts.port is None else f"{literal}:{parts.port}"
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
+
+
+# A compromised Duckling, or a private host that answers in its place, must
+# not be able to expand a short classify request into an unbounded body.
+MAX_DUCKLING_RESPONSE_BYTES = 1_048_576
+
+
+def _close_quietly(response):
+    raw = response.raw
+    if raw is not None:
+        response.close()
+
+
+def _consume_limited(response, limit=MAX_DUCKLING_RESPONSE_BYTES):
+    """Read a streamed response and refuse bodies above ``limit``."""
+    declared = response.headers.get("Content-Length")
+    if declared is not None:
+        # Ten digits covers every length above the cap. A longer digit string
+        # is refused before int() so it cannot force a multi-megabyte integer.
+        if (
+            not isinstance(declared, str)
+            or len(declared) > 10
+            or not declared.isdigit()
+            or int(declared) > limit
+        ):
+            _close_quietly(response)
+            raise ValueError("Duckling response is too large")
+    size = 0
+    chunks = []
+    for chunk in response.iter_content(chunk_size=65536):
+        if not chunk:
+            continue
+        size += len(chunk)
+        if size > limit:
+            _close_quietly(response)
+            raise ValueError("Duckling response is too large")
+        chunks.append(chunk)
+    response._content = b"".join(chunks)
+    response._content_consumed = True
+    return response
+
+
+def post_duckling(data, timeout, url=None):
+    response = requests.post(
+        pinned_duckling_url(url),
+        data=data,
+        timeout=timeout,
+        allow_redirects=False,
+        stream=True,
+    )
+    # Tests replace requests.post with a mock. Only a real response is read
+    # here, so the mock's body stays under the caller's control.
+    if isinstance(response, requests.Response):
+        _consume_limited(response)
+    return response
+
+
+def read_duckling_json(response):
+    """Return Duckling's entity list, or raise without parsing anything else.
+
+    Redirect statuses are not followed and are not treated as a parse result.
+    ``requests`` would otherwise accept a 3xx and hand the body to ``json``.
+    """
+    if isinstance(response, requests.Response) and response.status_code != 200:
+        _close_quietly(response)
+        raise ValueError("Duckling returned an unexpected status")
+    response.raise_for_status()
+    body = response.json()
+    if not isinstance(body, list):
+        raise ValueError("Duckling returned an unexpected payload")
+    return body
+
+
 def duckling_parse(text):
     # French clock times and weekdays are missed when Duckling is pinned to
     # en_GB, so switch locale when we need French temporal parsing.
     locale = "fr_FR" if should_use_french_locale(text) else "en_GB"
-    r = requests.post(
-        DUCKLING_URL,
-        data={
+    response = post_duckling(
+        {
             "locale": locale,
             "text": text,
             "dims": '["time","duration"]',
         },
         timeout=3,
     )
-    r.raise_for_status()
-    return r.json()
+    return read_duckling_json(response)
 
 
 def root_token(doc):

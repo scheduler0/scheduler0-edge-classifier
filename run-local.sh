@@ -20,6 +20,20 @@ PORT="${PORT:-5000}"
 DUCKLING_PORT="${DUCKLING_PORT:-8000}"
 DUCKLING_TIMEOUT="${DUCKLING_TIMEOUT:-60}"
 DUCKLING_CONTAINER="scheduler0-duckling"
+
+is_tcp_port() {
+  [[ "$1" =~ ^[0-9]+$ ]] && ((10#$1 >= 1 && 10#$1 <= 65535))
+}
+
+if ! is_tcp_port "$PORT" || ! is_tcp_port "$DUCKLING_PORT"; then
+  echo "ERROR: PORT and DUCKLING_PORT must be integers from 1 to 65535."
+  exit 1
+fi
+if ! [[ "$DUCKLING_TIMEOUT" =~ ^[0-9]+$ ]] || ((10#$DUCKLING_TIMEOUT < 1 || 10#$DUCKLING_TIMEOUT > 600)); then
+  echo "ERROR: DUCKLING_TIMEOUT must be an integer from 1 to 600."
+  exit 1
+fi
+
 DUCKLING_URL="http://127.0.0.1:${DUCKLING_PORT}/parse"
 
 # ── Sanity checks ─────────────────────────────────────────────────────────────
@@ -28,7 +42,6 @@ if [ ! -x .venv/bin/uvicorn ]; then
   echo "  python3 -m venv .venv"
   echo "  source .venv/bin/activate"
   echo "  pip install -r requirements.txt"
-  echo "  python -m spacy download en_core_web_sm"
   exit 1
 fi
 
@@ -38,7 +51,7 @@ if [ "$PORT" = "$DUCKLING_PORT" ]; then
 fi
 
 # ── Start Duckling (Docker) ───────────────────────────────────────────────────
-if curl -sf --max-time 2 -X POST "$DUCKLING_URL" \
+if curl -sf --max-time 2 --max-redirs 0 -X POST "$DUCKLING_URL" \
     -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; then
   echo "==> Duckling already responding at ${DUCKLING_URL}"
 else
@@ -53,15 +66,19 @@ else
     echo "==> Starting existing Duckling container"
     docker start "$DUCKLING_CONTAINER" > /dev/null
   else
-    echo "==> Launching Duckling container (rasa/duckling, port ${DUCKLING_PORT})"
-    # rasa/duckling listens on 8000 inside the container
+    echo "==> Launching Duckling container (rasa/duckling:0.2.0.2-r4, port ${DUCKLING_PORT})"
+    # rasa/duckling listens on 8000 inside the container. The tag is pinned to
+    # the image digest so a rewritten Docker Hub tag cannot change the binary.
+    # Publish on loopback only; the classifier also listens on loopback.
     docker run -d --name "$DUCKLING_CONTAINER" \
-      -p "${DUCKLING_PORT}:8000" rasa/duckling > /dev/null
+      -p "127.0.0.1:${DUCKLING_PORT}:8000" \
+      rasa/duckling@sha256:55e7adfb6d63eb0d1c1bdb8a28080a74d4d281871258c2ca2d7cd0eaf29b2d11 \
+      > /dev/null
   fi
 
   echo "==> Waiting up to ${DUCKLING_TIMEOUT}s for Duckling at ${DUCKLING_URL}"
   ELAPSED=0
-  until curl -sf --connect-timeout 2 --max-time 5 -X POST "$DUCKLING_URL" \
+  until curl -sf --connect-timeout 2 --max-time 5 --max-redirs 0 -X POST "$DUCKLING_URL" \
       -d 'locale=en_GB&text=tomorrow&dims=["time"]' > /dev/null 2>&1; do
     if [ "$ELAPSED" -ge "$DUCKLING_TIMEOUT" ]; then
       echo "ERROR: Duckling did not become ready within ${DUCKLING_TIMEOUT}s"
@@ -90,4 +107,5 @@ export DUCKLING_URL
 echo "==> Starting Uvicorn on http://127.0.0.1:${PORT} (Ctrl-C to stop)"
 echo "    Duckling container '${DUCKLING_CONTAINER}' keeps running; stop it with:"
 echo "    docker stop ${DUCKLING_CONTAINER}"
-exec .venv/bin/uvicorn app:app --host 0.0.0.0 --port "$PORT" --reload
+# Bind the loopback interface. The log line above is the actual listen address.
+exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "$PORT" --reload

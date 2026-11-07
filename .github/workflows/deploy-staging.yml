@@ -9,10 +9,15 @@ concurrency:
   group: intent-classifier-deploy-staging-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     uses: ./.github/workflows/_deploy.yml
     with:
       environment: staging
       env_name: staging
-    secrets: inherit
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
