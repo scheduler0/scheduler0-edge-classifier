@@ -63,13 +63,8 @@ read_metadata_ipv4() {
       return 0
     fi
   fi
-  # IMDSv1 only as a last resort, and only for the private IPv4 address.
-  # The response is still passed through is_safe_host_ip.
-  ip=$(curl -sf --max-time 5 --max-redirs 0 http://169.254.169.254/latest/meta-data/local-ipv4 || true)
-  if is_safe_host_ip "$ip"; then
-    printf '%s\n' "$ip"
-    return 0
-  fi
+  # IMDSv2 only. A tokenless (IMDSv1) request is the classic SSRF path into
+  # instance credentials, and the host_ip file is the primary source anyway.
   return 1
 }
 
@@ -125,12 +120,12 @@ start_uvicorn() {
       echo "==> Starting Uvicorn as appuser"
       export HOME=/home/appuser
       exec setpriv --reuid=appuser --regid=appuser --init-groups -- \
-        /opt/scheduler0-nlp/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+        /opt/scheduler0-nlp/bin/uvicorn app:app --host 0.0.0.0 --port 8080 --no-server-header
     fi
     echo "==> WARNING: appuser cannot read the NLP venv or app; starting as root"
   fi
   echo "==> Starting Uvicorn"
-  exec /opt/scheduler0-nlp/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+  exec /opt/scheduler0-nlp/bin/uvicorn app:app --host 0.0.0.0 --port 8080 --no-server-header
 }
 
 start_uvicorn

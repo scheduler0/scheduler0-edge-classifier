@@ -108,4 +108,4 @@ echo "==> Starting Uvicorn on http://127.0.0.1:${PORT} (Ctrl-C to stop)"
 echo "    Duckling container '${DUCKLING_CONTAINER}' keeps running; stop it with:"
 echo "    docker stop ${DUCKLING_CONTAINER}"
 # Bind the loopback interface. The log line above is the actual listen address.
-exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "$PORT" --reload
+exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "$PORT" --reload --no-server-header

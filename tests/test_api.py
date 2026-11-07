@@ -122,10 +122,20 @@ class ApiTests(unittest.TestCase):
     def test_healthz_reports_ok_when_both_backends_respond(self):
         with patch("app.post_duckling") as post:
             post.return_value.raise_for_status.return_value = None
+            post.return_value.json.return_value = []
             body = healthz()
         self.assertEqual({"status": "ok"}, body)
         self.assertEqual("en_GB", post.call_args.args[0]["locale"])
         self.assertEqual(2, post.call_args.kwargs["timeout"])
+
+    def test_healthz_fails_when_duckling_returns_a_non_entity_payload(self):
+        with patch("app.post_duckling") as post:
+            post.return_value.raise_for_status.return_value = None
+            post.return_value.json.return_value = {"error": "not duckling"}
+            with self.assertRaises(HTTPException) as ctx:
+                healthz()
+        self.assertEqual(503, ctx.exception.status_code)
+        self.assertEqual("Duckling unreachable", ctx.exception.detail)
 
     def test_healthz_fails_when_duckling_is_down(self):
         with patch("app.post_duckling", side_effect=ConnectionError("refused")):

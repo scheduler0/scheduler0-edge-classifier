@@ -12,19 +12,47 @@ on:
         required: true
         type: string
     secrets:
+      # Optional once the AWS_ROLE_ARN repository variable is set (OIDC).
       AWS_ACCESS_KEY_ID:
-        required: true
+        required: false
       AWS_SECRET_ACCESS_KEY:
-        required: true
+        required: false
 
 jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: "3.12"
+        cache: "pip"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --disable-pip-version-check 'pip==26.2.2'
+        pip install -r requirements.txt
+
+    - name: Run tests
+      run: python -m unittest discover -s tests -v
+
   deploy:
     name: Deploy Intent Classifier
+    needs: test
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
     permissions:
       contents: read
+      id-token: write
 
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -33,6 +61,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        persist-credentials: false
 
     - name: Derive ECS resource names
       run: |
@@ -51,7 +81,17 @@ jobs:
         echo "ECS_TASK_DEFINITION=${ENV_NAME}-scheduler0-intent-classifier-ecs-task-definition.json"  >> "$GITHUB_ENV"
         echo "CONTAINER_NAME=${ENV_NAME}-scheduler0-intent-classifier"                                >> "$GITHUB_ENV"
 
-    - name: Configure AWS credentials
+    # Prefer GitHub OIDC when the AWS_ROLE_ARN repository variable is set; fall
+    # back to the long-lived access keys until that role exists.
+    - name: Configure AWS credentials (OIDC)
+      if: ${{ vars.AWS_ROLE_ARN != '' }}
+      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Configure AWS credentials (access keys)
+      if: ${{ vars.AWS_ROLE_ARN == '' }}
       uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}

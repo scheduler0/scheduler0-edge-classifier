@@ -7,7 +7,7 @@ from typing import Annotated, Any, Dict, List, Optional, Union
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from intent import classify, nlp, post_duckling
+from intent import classify, nlp, post_duckling, read_duckling_json
 from suggestions import UnsupportedLocaleError, analyze
 
 logging.basicConfig(
@@ -21,7 +21,7 @@ logger = logging.getLogger("intent_classifier")
 # from being used as a CPU or memory sink.
 MAX_CLASSIFY_CHARS = 4_000
 MAX_MESSAGE_CHARS = 8_000
-MAX_MESSAGES = 50
+MAX_MESSAGES = 100
 MAX_PARTICIPANTS = 50
 MAX_ID_CHARS = 128
 MAX_NAME_CHARS = 200
@@ -233,11 +233,12 @@ def healthz():
         raise HTTPException(status_code=503, detail="spaCy unavailable")
 
     try:
-        r = post_duckling(
-            {"locale": "en_GB", "text": "tomorrow", "dims": '["time"]'},
-            timeout=2,
+        read_duckling_json(
+            post_duckling(
+                {"locale": "en_GB", "text": "tomorrow", "dims": '["time"]'},
+                timeout=2,
+            )
         )
-        r.raise_for_status()
     except Exception as e:
         logger.error("healthz: Duckling unreachable: %s", e)
         raise HTTPException(status_code=503, detail="Duckling unreachable")

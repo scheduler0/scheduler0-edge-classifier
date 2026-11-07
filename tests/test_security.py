@@ -122,6 +122,17 @@ class DucklingUrlTests(unittest.TestCase):
         self.assertEqual("http://10.9.8.7:8000/parse?x=1", post.call_args.args[0])
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
+    def test_localhost_pins_to_ipv4_when_both_families_resolve(self):
+        both = [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 0, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
+        ]
+        with patch("intent.socket.getaddrinfo", return_value=both):
+            self.assertEqual(
+                "http://127.0.0.1:8000/parse",
+                pinned_duckling_url("http://localhost:8000/parse"),
+            )
+
     def test_post_resolves_a_hostname_once(self):
         private = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.9.8.7", 0))]
         metadata = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]

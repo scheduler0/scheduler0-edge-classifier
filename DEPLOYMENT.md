@@ -366,6 +366,8 @@ cat /var/lib/scheduler0-intent-classifier/bootstrap-complete
 
 ### Start Duckling Service
 
+> **Production note:** the shared scheduler0 EC2 node does not use this unit. `scheduler0-terraform/common/launch_template/user_data.sh` writes its own `duckling.service` and `/opt/duckling/host_ip` at boot, so the RFC1918 bind below only applies there once that launch template is updated to match.
+
 `install_scheduler0_nlp.sh --ci` installs `duckling.service`. The example server binds every interface unless `--address` is set, so the unit runs as the unprivileged `duckling` user and listens only on the host's RFC1918 address. It writes that address to `/opt/duckling/host_ip` for the container. Do not start `duckling-example-exe` without `-b`.
 
 ```ini

@@ -1115,7 +1115,9 @@ def _allowed_addresses(host_key):
         addresses = _resolved_addresses(host_key)
     if not addresses or any(_address_is_blocked(address) for address in addresses):
         raise ValueError("DUCKLING_URL address is not allowed")
-    return addresses
+    # Prefer IPv4 so "localhost" pins to 127.0.0.1, which is where the local
+    # Duckling container is published, rather than ::1.
+    return sorted(addresses, key=lambda address: _normalize_address(address).version)
 
 
 def validated_duckling_url(url=None):
