@@ -16,12 +16,23 @@ This guide covers deploying the scheduler0-edge-classifier service to AWS ECS.
 
 ## Architecture Overview
 
+> **Current topology:** the classifier does not have its own EC2 capacity. Its
+> ECS task is placed on the shared scheduler0 EC2 node, the same instance that
+> runs `scheduler0-private-1`. That node boots from a golden AMI that already
+> contains `/opt/duckling` and `/opt/scheduler0-nlp`, starts Duckling as a host
+> `systemd` unit on port 8000, and advertises both `scheduler0.private` and
+> `scheduler0.intent-classifier` ECS instance attributes. The launch template,
+> user-data and `install_scheduler0_nlp.sh` (golden AMI recipe) live in
+> `scheduler0-terraform/common/launch_template/`. Sections below that describe
+> standing up EC2 capacity by hand are kept as reference for a from-scratch
+> environment.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         AWS ECS Cluster                      │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │ EC2 Instance (Dedicated Capacity)                      │ │
+│  │ Shared scheduler0 EC2 node (also runs private-1)       │ │
 │  │                                                          │ │
 │  │  ┌──────────────────────┐  ┌──────────────────────┐   │ │
 │  │  │ Host Process         │  │ ECS Task (Container) │   │ │
@@ -54,10 +65,10 @@ This guide covers deploying the scheduler0-edge-classifier service to AWS ECS.
    - Shared read-only across containers
    - Keeps container images small
 
-3. **Dedicated EC2 capacity**
-   - Uses ECS placement constraints
-   - Ensures NLP models are pre-loaded
-   - Faster cold starts
+3. **Placement on the shared scheduler0 node**
+   - Uses an ECS placement constraint on the `scheduler0.intent-classifier` attribute
+   - The node's golden AMI already carries Duckling and the NLP venv, so no build at boot
+   - Fast cold starts; one EC2 instance to operate
 
 ## Prerequisites
 
@@ -75,7 +86,7 @@ This guide covers deploying the scheduler0-edge-classifier service to AWS ECS.
 
 3. **ECS Cluster**
    - EC2-backed cluster (not Fargate)
-   - Dedicated EC2 instances with custom attributes
+   - EC2 instance(s) carrying the `scheduler0.intent-classifier` attribute (in the real stack: the shared scheduler0 node)
 
 4. **ECR Repositories**
    - `staging-scheduler0-intent-classifier`
@@ -174,10 +185,11 @@ Create a launch template with **custom UserData** to set the cluster attribute:
 ```bash
 #!/bin/bash
 echo ECS_CLUSTER=staging_scheduler0_ecs_cluster >> /etc/ecs/ecs.config
-echo ECS_INSTANCE_ATTRIBUTES='{"scheduler0.intent-classifier":"true"}' >> /etc/ecs/ecs.config
+echo ECS_INSTANCE_ATTRIBUTES='{"scheduler0.private": "true", "scheduler0.intent-classifier": "true"}' >> /etc/ecs/ecs.config
 ```
 
-**Important**: Use Amazon Linux 2023 AMI for compatibility.
+**Important**: Use Amazon Linux 2023 AMI for compatibility. In the real stack the
+instance is the shared scheduler0 node, so the attribute list carries both keys.
 
 ### Option 2: Terraform (Example)
 
@@ -544,7 +556,8 @@ If failing after 5 minutes, check application logs.
 ```bash
 # On EC2 instance
 cat /etc/ecs/ecs.config | grep INSTANCE_ATTRIBUTES
-# Should show: ECS_INSTANCE_ATTRIBUTES={"scheduler0.intent-classifier":"true"}
+# Should include scheduler0.intent-classifier, e.g.
+# ECS_INSTANCE_ATTRIBUTES={"scheduler0.private": "true", "scheduler0.intent-classifier": "true"}
 
 # Verify in AWS
 aws ecs describe-container-instances \
@@ -557,9 +570,9 @@ aws ecs describe-container-instances \
 
 ### Scaling
 
-Current setup uses dedicated EC2 instances. For scaling:
+The task shares one EC2 node with `scheduler0-private-1` (reservations: 1024 CPU / 2048 MiB for the classifier next to private's 7168 / 26624 on an m6i.2xlarge in production). For scaling:
 
-1. **Horizontal**: Add more EC2 instances to the cluster
+1. **Horizontal**: Add more EC2 instances carrying the `scheduler0.intent-classifier` attribute (each needs the golden AMI and the Duckling unit)
 2. **Vertical**: Use larger instance types (c5.xlarge, etc.)
 3. **Task Count**: Increase desired task count in service
 
